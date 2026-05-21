@@ -107,18 +107,15 @@ class TourService:
         return self._to_response(tour)
 
     async def create_tour(self, user: User, data: TourCreate) -> TourResponse:
-        """Create tour for admin's company or user's own listing."""
-        from app.models.user import UserRole
-
-        # Admin uchun company_id majburiy
-        if user.role == UserRole.ADMIN and not user.company_id:
+        """Create tour for admin's company."""
+        if not user.company_id:
             raise HTTPException(status_code=403, detail="Kompaniyaga biriktirilmagansiz")
 
         if data.end_date < data.start_date:
             raise HTTPException(status_code=400, detail="Tugash sanasi boshlanishdan oldin bo'lmasin")
 
         tour = Tour(
-            company_id=user.company_id,  # USER uchun None bo'lishi mumkin
+            company_id=user.company_id,
             title=data.title,
             description=data.description,
             city=data.city,
@@ -141,16 +138,12 @@ class TourService:
     async def update_tour(
         self, user: User, tour_id: int, data: TourUpdate
     ) -> TourResponse:
-        """Update tour — admin faqat o'z kompaniyasini, user faqat o'zi yaratganini."""
-        from app.models.user import UserRole
-
+        """Update tour belonging to admin's company."""
         result = await self.db.execute(select(Tour).where(Tour.id == tour_id))
         tour = result.scalar_one_or_none()
         if not tour:
             raise HTTPException(status_code=404, detail="Tur topilmadi")
-
-        # Admin faqat o'z kompaniyasining turini tahrirlaydi
-        if user.role == UserRole.ADMIN and tour.company_id != user.company_id:
+        if tour.company_id != user.company_id:
             raise HTTPException(status_code=403, detail="Bu tur sizga tegishli emas")
 
         for field, value in data.model_dump(exclude_unset=True).items():
@@ -159,17 +152,13 @@ class TourService:
         return await self.get_tour(tour_id)
 
     async def delete_tour(self, user: User, tour_id: int) -> dict:
-        """Soft-delete — admin o'z kompaniyasini, user faqat o'zi yaratganini."""
-        from app.models.user import UserRole
-
+        """Soft-delete tour by deactivating."""
         result = await self.db.execute(select(Tour).where(Tour.id == tour_id))
         tour = result.scalar_one_or_none()
         if not tour:
             raise HTTPException(status_code=404, detail="Tur topilmadi")
-
-        if user.role == UserRole.ADMIN and tour.company_id != user.company_id:
+        if tour.company_id != user.company_id:
             raise HTTPException(status_code=403, detail="Bu tur sizga tegishli emas")
-
         tour.is_active = False
         return {"message": "Tur o'chirildi"}
 

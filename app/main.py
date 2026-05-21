@@ -61,7 +61,7 @@ async def seed_superadmin():
 
 app = FastAPI(
     title=settings.app_name,
-    description="Savdogar — CRM/POS tizimi, SAIR tur platformasi bilan API integratsiya",
+    description="Savdogar — CRM/POS tizimi, SAYR tur platformasi bilan API integratsiya",
     version="1.0.0",
     lifespan=lifespan,
 )

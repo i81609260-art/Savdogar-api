@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.middleware.role_guard import role_required
 from app.models.user import User, UserRole
-from app.services.SAIR_integration_service import SAIRIntegrationService
+from app.services.sayr_integration_service import SayrIntegrationService
 
-router = APIRouter(prefix="/api/integrations/SAIR", tags=["SAIR Integration"])
+router = APIRouter(prefix="/api/integrations/sayr", tags=["SAIR Integration"])
 
 
 def _get_sio(request: Request):
@@ -19,9 +19,9 @@ def _get_sio(request: Request):
 
 
 @router.post("/webhook", summary="SAIR webhook (tashqi)")
-async def SAIR_webhook(
+async def sair_webhook(
     request: Request,
-    x_SAIR_signature: Optional[str] = Header(None, alias="X-SAIR-Signature"),
+    x_sayr_signature: Optional[str] = Header(None, alias="X-Sayr-Signature"),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
@@ -35,11 +35,11 @@ async def SAIR_webhook(
     event_type = body.get("event") or body.get("type", "unknown")
     data = body.get("data", body)
 
-    service = SAIRIntegrationService(db, _get_sio(request))
+    service = SayrIntegrationService(db, _get_sio(request))
     return await service.handle_webhook(
         event_type,
         data,
-        signature=x_SAIR_signature,
+        signature=x_sayr_signature,
         raw_body=raw,
     )
 
@@ -49,15 +49,15 @@ async def SAIR_webhook(
     summary="SAIR bilan ulanish arizasi",
     dependencies=[Depends(role_required(UserRole.ADMIN))],
 )
-async def connect_SAIR(
+async def connect_sair(
     current_user: User = Depends(role_required(UserRole.ADMIN)),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """Savdogar admin SAIR integratsiyasini so'raydi."""
     if not current_user.company_id:
         return {"detail": "Kompaniyaga biriktirilmagansiz"}
-    service = SAIRIntegrationService(db)
-    return await service.request_SAIR_integration(current_user.company_id)
+    service = SayrIntegrationService(db)
+    return await service.request_sayr_integration(current_user.company_id)
 
 
 @router.get(
@@ -72,7 +72,7 @@ async def integration_status(
     """SAIR ulanish holati va statistika."""
     if not current_user.company_id:
         return {"status": "no_company"}
-    service = SAIRIntegrationService(db)
+    service = SayrIntegrationService(db)
     return await service.get_integration_status(current_user.company_id)
 
 
@@ -88,6 +88,5 @@ async def pos_sales(
     """SAIR dan kelgan sotuvlar — kim, nima sotib oldi."""
     if not current_user.company_id:
         return []
-    service = SAIRIntegrationService(db)
+    service = SayrIntegrationService(db)
     return await service.list_pos_notifications(current_user.company_id)
-
