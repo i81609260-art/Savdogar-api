@@ -98,6 +98,15 @@ app.include_router(integrations.router)
 app.state.sio = sio
 
 
+from fastapi.responses import RedirectResponse
+
+
+@app.get("/")
+async def root():
+    """Redirect root path to API docs."""
+    return RedirectResponse(url="/docs")
+
+
 @app.get("/api/health")
 async def health():
     """Health check endpoint."""
