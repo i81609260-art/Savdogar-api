@@ -55,6 +55,13 @@ class User(Base):
         "Notification", back_populates="user"
     )
 
+    @property
+    def company_status(self) -> Optional[str]:
+        """Get the status of the associated company safely without lazy loading."""
+        if "company" in self.__dict__ and self.company:
+            return self.company.status.value
+        return None
+
 
 class RefreshTokenBlacklist(Base):
     """Blacklisted refresh tokens after logout."""

@@ -50,7 +50,12 @@ async def get_current_user(
             company_id=None,
         )
 
-    result = await db.execute(select(User).where(User.id == int(user_id)))
+    from sqlalchemy.orm import selectinload
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.company))
+        .where(User.id == int(user_id))
+    )
     user = result.scalar_one_or_none()
 
     if not user or not user.is_active:
