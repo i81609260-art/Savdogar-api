@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.db
+uploads/
+
+# Node
+node_modules/
+.next/
+out/
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PWA
+**/public/sw.js.map
+**/public/workbox-*.js
+**/public/worker-*.js
