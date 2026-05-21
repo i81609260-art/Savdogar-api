@@ -1,4 +1,4 @@
-"""SAYR va boshqa tashqi platformalar integratsiya modellari."""
+"""SAIR va boshqa tashqi platformalar integratsiya modellari."""
 
 import enum
 from datetime import datetime
@@ -13,11 +13,11 @@ from app.database import Base
 class IntegrationProvider(str, enum.Enum):
     """Tashqi integratsiya provayderi."""
 
-    SAYR = "sayr"
+    SAIR = "sair"
 
 
 class IntegrationStatus(str, enum.Enum):
-    """Savdogar ↔ SAYR ulanish holati."""
+    """Savdogar ↔ SAIR ulanish holati."""
 
     PENDING = "pending"
     ACTIVE = "active"
@@ -26,14 +26,14 @@ class IntegrationStatus(str, enum.Enum):
 
 
 class IntegrationConfig(Base):
-    """Savdogar kompaniyasining SAYR integratsiya sozlamalari."""
+    """Savdogar kompaniyasining SAIR integratsiya sozlamalari."""
 
     __tablename__ = "integration_configs"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), unique=True, index=True)
     provider: Mapped[IntegrationProvider] = mapped_column(
-        Enum(IntegrationProvider), default=IntegrationProvider.SAYR
+        Enum(IntegrationProvider), default=IntegrationProvider.SAIR
     )
     status: Mapped[IntegrationStatus] = mapped_column(
         Enum(IntegrationStatus), default=IntegrationStatus.PENDING
@@ -53,7 +53,7 @@ class IntegrationConfig(Base):
 
 
 class ExternalTourMapping(Base):
-    """SAYR tur ID ↔ Savdogar tur ID bog'lanishi."""
+    """SAIR tur ID ↔ Savdogar tur ID bog'lanishi."""
 
     __tablename__ = "external_tour_mappings"
 
@@ -70,7 +70,7 @@ class ExternalTourMapping(Base):
 
 
 class IntegrationEvent(Base):
-    """SAYR webhook va sync hodisalari jurnali."""
+    """SAIR webhook va sync hodisalari jurnali."""
 
     __tablename__ = "integration_events"
 

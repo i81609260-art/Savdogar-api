@@ -14,12 +14,12 @@ if TYPE_CHECKING:
 
 
 class Tour(Base):
-    """Tour package offered by a company."""
+    """Tour package offered by a company or individual user."""
 
     __tablename__ = "tours"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    company_id: Mapped[Optional[int]] = mapped_column(ForeignKey("companies.id"), index=True, nullable=True)
     title: Mapped[str] = mapped_column(String(255), index=True)
     description: Mapped[str] = mapped_column(Text)
     city: Mapped[str] = mapped_column(String(100), index=True)

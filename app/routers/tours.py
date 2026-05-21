@@ -61,14 +61,14 @@ async def get_tour(
     "",
     response_model=TourResponse,
     summary="Tur yaratish",
-    dependencies=[Depends(role_required(UserRole.ADMIN))],
+    dependencies=[Depends(role_required(UserRole.ADMIN, UserRole.USER))],
 )
 async def create_tour(
     data: TourCreate,
-    current_user: User = Depends(role_required(UserRole.ADMIN)),
+    current_user: User = Depends(role_required(UserRole.ADMIN, UserRole.USER)),
     db: AsyncSession = Depends(get_db),
 ) -> TourResponse:
-    """Admin creates a new tour package."""
+    """Admin yoki user yangi tur paketi yaratadi."""
     service = TourService(db)
     return await service.create_tour(current_user, data)
 
@@ -77,15 +77,15 @@ async def create_tour(
     "/{tour_id}",
     response_model=TourResponse,
     summary="Tur tahrirlash",
-    dependencies=[Depends(role_required(UserRole.ADMIN))],
+    dependencies=[Depends(role_required(UserRole.ADMIN, UserRole.USER))],
 )
 async def update_tour(
     tour_id: int,
     data: TourUpdate,
-    current_user: User = Depends(role_required(UserRole.ADMIN)),
+    current_user: User = Depends(role_required(UserRole.ADMIN, UserRole.USER)),
     db: AsyncSession = Depends(get_db),
 ) -> TourResponse:
-    """Admin updates tour package."""
+    """Admin yoki user o'z turini tahrirlaydi."""
     service = TourService(db)
     return await service.update_tour(current_user, tour_id, data)
 
@@ -93,14 +93,14 @@ async def update_tour(
 @router.delete(
     "/{tour_id}",
     summary="Tur o'chirish",
-    dependencies=[Depends(role_required(UserRole.ADMIN))],
+    dependencies=[Depends(role_required(UserRole.ADMIN, UserRole.USER))],
 )
 async def delete_tour(
     tour_id: int,
-    current_user: User = Depends(role_required(UserRole.ADMIN)),
+    current_user: User = Depends(role_required(UserRole.ADMIN, UserRole.USER)),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Admin soft-deletes tour."""
+    """Admin yoki user o'z turini o'chiradi (soft-delete)."""
     service = TourService(db)
     return await service.delete_tour(current_user, tour_id)
 
@@ -109,15 +109,15 @@ async def delete_tour(
     "/{tour_id}/image",
     response_model=TourResponse,
     summary="Tur rasmi yuklash",
-    dependencies=[Depends(role_required(UserRole.ADMIN))],
+    dependencies=[Depends(role_required(UserRole.ADMIN, UserRole.USER))],
 )
 async def upload_tour_image(
     tour_id: int,
     file: UploadFile = File(...),
-    current_user: User = Depends(role_required(UserRole.ADMIN)),
+    current_user: User = Depends(role_required(UserRole.ADMIN, UserRole.USER)),
     db: AsyncSession = Depends(get_db),
 ) -> TourResponse:
-    """Upload tour cover image."""
+    """Tur muqova rasmini yuklash."""
     os.makedirs(settings.upload_dir, exist_ok=True)
     ext = os.path.splitext(file.filename or "")[1] or ".jpg"
     filename = f"{uuid.uuid4()}{ext}"

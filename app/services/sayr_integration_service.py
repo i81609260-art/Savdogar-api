@@ -1,4 +1,4 @@
-"""SAYR platformasi bilan API integratsiya xizmati."""
+"""SAIR platformasi bilan API integratsiya xizmati."""
 
 import hashlib
 import hmac
@@ -33,7 +33,7 @@ settings = get_settings()
 
 
 class SayrIntegrationService:
-    """SAYR API client, webhook va CRM/POS bildirishnomalar."""
+    """SAIR API client, webhook va CRM/POS bildirishnomalar."""
 
     def __init__(self, db: AsyncSession, sio=None):
         """Initialize with DB session and optional Socket.io."""
@@ -75,7 +75,7 @@ class SayrIntegrationService:
         signature: Optional[str] = None,
         raw_body: Optional[bytes] = None,
     ) -> dict:
-        """SAYR dan kelgan webhookni qayta ishlash."""
+        """SAIR dan kelgan webhookni qayta ishlash."""
         company_id = data.get("savdogar_company_id") or data.get("company_id")
         secret = settings.sayr_webhook_secret
 
@@ -102,7 +102,7 @@ class SayrIntegrationService:
             await self.log_event(event_type, data, company_id, processed=True)
             return result
         except Exception as exc:
-            logger.exception("SAYR webhook xato: %s", exc)
+            logger.exception("SAIR webhook xato: %s", exc)
             await self.log_event(event_type, data, company_id, processed=False, error=str(exc))
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -128,13 +128,13 @@ class SayrIntegrationService:
 
         await self._notify_company_admins(
             company_id,
-            "SAYR integratsiyasi faollashdi",
-            "SAYR platformasi Savdogar bilan muvaffaqiyatli ulandi. Turlar sinxronlanadi.",
+            "SAIR integratsiyasi faollashdi",
+            "SAIR platformasi Savdogar bilan muvaffaqiyatli ulandi. Turlar sinxronlanadi.",
         )
         return {"message": "Integratsiya faollashtirildi", "company_id": company_id}
 
     async def _on_integration_rejected(self, data: dict) -> dict:
-        """SAYR integratsiyani rad etganda."""
+        """SAIR integratsiyani rad etganda."""
         company_id = int(data["savdogar_company_id"])
         result = await self.db.execute(
             select(IntegrationConfig).where(IntegrationConfig.company_id == company_id)
@@ -145,7 +145,7 @@ class SayrIntegrationService:
         return {"message": "Integratsiya rad etildi"}
 
     async def _on_user_provisioned(self, data: dict) -> dict:
-        """SAYR da user yaratilganda Savdogarda ham avtomatik user."""
+        """SAIR da user yaratilganda Savdogarda ham avtomatik user."""
         email = data["email"]
         existing = await self.db.execute(select(User).where(User.email == email))
         if existing.scalar_one_or_none():
@@ -155,7 +155,7 @@ class SayrIntegrationService:
         user = User(
             email=email,
             hashed_password=hash_password(data.get("temp_password", "ChangeMe123!")),
-            full_name=data.get("full_name", "SAYR User"),
+            full_name=data.get("full_name", "SAIR User"),
             phone=data.get("phone"),
             role=UserRole(data.get("role", "user")),
             company_id=int(company_id) if company_id else None,
@@ -166,18 +166,18 @@ class SayrIntegrationService:
         return {"message": "User yaratildi", "user_id": user.id, "email": email}
 
     async def _on_booking_created(self, data: dict) -> dict:
-        """SAYR da bron qilinganda — Savdogar CRM/POS ga xabar."""
+        """SAIR da bron qilinganda — Savdogar CRM/POS ga xabar."""
         return await self._create_pos_notification(data, BookingStatus.PENDING)
 
     async def _on_booking_confirmed(self, data: dict) -> dict:
-        """SAYR da bron tasdiqlanganda."""
+        """SAIR da bron tasdiqlanganda."""
         return await self._create_pos_notification(data, BookingStatus.CONFIRMED)
 
     async def _create_pos_notification(self, data: dict, status: BookingStatus) -> dict:
         """CRM/POS sotuv bildirishnomasi va ichki bron."""
         company_id = int(data["savdogar_company_id"])
         external_booking_id = str(data["booking_id"])
-        tour_title = data.get("tour_title", "SAYR tur")
+        tour_title = data.get("tour_title", "SAIR tur")
         user_name = data.get("user_name", "Noma'lum")
         user_email = data.get("user_email")
         total_price = float(data.get("total_price", 0))
@@ -192,7 +192,7 @@ class SayrIntegrationService:
             tour_title=tour_title,
             total_price=total_price,
             guests_count=guests,
-            source="sayr",
+            source="sair",
         )
         self.db.add(pos)
         await self.db.flush()
@@ -225,7 +225,7 @@ class SayrIntegrationService:
                 status=status,
                 guests_count=guests,
                 total_price=total_price,
-                notes=f"SAYR bron #{external_booking_id}",
+                notes=f"SAIR bron #{external_booking_id}",
             )
             self.db.add(booking)
             await self.db.flush()
@@ -234,8 +234,8 @@ class SayrIntegrationService:
         status_uz = "sotib oldi" if status == BookingStatus.CONFIRMED else "bron qildi (kutilmoqda)"
         await self._notify_company_admins(
             company_id,
-            f"SAYR: {user_name} {status_uz}",
-            f"«{tour_title}» — {guests} mehmon, {total_price:,.0f} so'm. Manba: SAYR",
+            f"SAIR: {user_name} {status_uz}",
+            f"«{tour_title}» — {guests} mehmon, {total_price:,.0f} so'm. Manba: SAIR",
             link="/admin/bookings",
             notif_type="pos_sale",
         )
@@ -248,7 +248,7 @@ class SayrIntegrationService:
                     "user_name": user_name,
                     "tour_title": tour_title,
                     "total_price": total_price,
-                    "source": "sayr",
+                    "source": "sair",
                 },
                 room=f"company_{company_id}",
             )
@@ -259,7 +259,7 @@ class SayrIntegrationService:
         }
 
     async def _on_tour_sync(self, data: dict) -> dict:
-        """SAYR dan tur paket sinxronlash."""
+        """SAIR dan tur paket sinxronlash."""
         company_id = int(data["savdogar_company_id"])
         tours_data = data.get("tours", [])
         synced = 0
@@ -358,7 +358,7 @@ class SayrIntegrationService:
                 )
 
     async def request_sayr_integration(self, company_id: int) -> dict:
-        """Savdogar SAYR ga integratsiya arizasi yuboradi."""
+        """Savdogar SAIR ga integratsiya arizasi yuboradi."""
         result = await self.db.execute(
             select(IntegrationConfig).where(IntegrationConfig.company_id == company_id)
         )
@@ -388,10 +388,10 @@ class SayrIntegrationService:
                         body = resp.json()
                         config.sayr_company_id = str(body.get("sayr_company_id", ""))
             except Exception as exc:
-                logger.warning("SAYR API ulanmadi (mock rejim): %s", exc)
+                logger.warning("SAIR API ulanmadi (mock rejim): %s", exc)
 
         return {
-            "message": "SAYR ga integratsiya arizasi yuborildi",
+            "message": "SAIR ga integratsiya arizasi yuborildi",
             "status": config.status.value,
         }
 
@@ -402,7 +402,7 @@ class SayrIntegrationService:
         )
         config = result.scalar_one_or_none()
         if not config:
-            return {"provider": "sayr", "status": "not_configured"}
+            return {"provider": "sair", "status": "not_configured"}
 
         pos_count = await self.db.execute(
             select(PosSaleNotification).where(
@@ -421,7 +421,7 @@ class SayrIntegrationService:
         }
 
     async def list_pos_notifications(self, company_id: int) -> list[dict]:
-        """CRM/POS SAYR sotuvlari ro'yxati."""
+        """CRM/POS SAIR sotuvlari ro'yxati."""
         result = await self.db.execute(
             select(PosSaleNotification)
             .where(PosSaleNotification.company_id == company_id)
@@ -443,3 +443,4 @@ class SayrIntegrationService:
             }
             for p in result.scalars().all()
         ]
+
