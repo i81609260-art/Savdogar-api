@@ -29,7 +29,12 @@ class Settings(BaseSettings):
     sayr_api_key: str = ""
     sayr_webhook_secret: str = ""
     savdogar_public_url: str = "http://localhost:8000"
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = (
+        "http://localhost:3000,"
+        "https://savdogar-sable.vercel.app,"
+        "https://savdogar-five.vercel.app,"
+        "https://savdogar-agentligi.vercel.app"
+    )
 
     upload_dir: str = "uploads"
     max_upload_size_mb: int = 5
@@ -38,7 +43,12 @@ class Settings(BaseSettings):
     vapid_private_key: str = ""
     vapid_claims_email: str = "mailto:admin@sayr.uz"
 
-    socket_cors_origins: str = "http://localhost:3000"
+    socket_cors_origins: str = (
+        "http://localhost:3000,"
+        "https://savdogar-sable.vercel.app,"
+        "https://savdogar-five.vercel.app,"
+        "https://savdogar-agentligi.vercel.app"
+    )
 
     @property
     def cors_origin_list(self) -> List[str]:
