@@ -26,10 +26,10 @@ settings = get_settings()
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
-    cors_allowed_origins=settings.socket_cors_list,
+    cors_allowed_origins="*",
 )
 
-socket_app = socketio.ASGIApp(sio)
+socket_app = socketio.ASGIApp(sio, socketio_path="")
 
 
 @asynccontextmanager
