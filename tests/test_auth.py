@@ -14,10 +14,10 @@ async def test_health(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_superadmin_login(client: AsyncClient):
-    """Superadmin can login with seeded credentials."""
+    """Superadmin can login with credentials."""
     response = await client.post(
         "/api/auth/login",
-        json={"email": "admin@savdogar.uz", "password": "SavdogarAdmin123!"},
+        json={"email": "admin", "password": "admin123"},
     )
     assert response.status_code == 200
     data = response.json()

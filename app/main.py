@@ -49,21 +49,13 @@ async def seed_superadmin():
     from app.models.user import User, UserRole
     from app.utils.security import hash_password
 
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(User).where(User.role == UserRole.SUPERADMIN)
-        )
-        if result.scalar_one_or_none():
-            return
+    from sqlalchemy import delete
 
-        admin = User(
-            email="admin@savdogar.uz",
-            hashed_password=hash_password("SavdogarAdmin123!"),
-            full_name="Savdogar Super Admin",
-            role=UserRole.SUPERADMIN,
-            is_active=True,
+    async with AsyncSessionLocal() as db:
+        # Delete any existing DB-stored superadmin users to keep DB clean
+        await db.execute(
+            delete(User).where(User.role == UserRole.SUPERADMIN)
         )
-        db.add(admin)
         await db.commit()
 
 

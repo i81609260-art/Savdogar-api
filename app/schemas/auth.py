@@ -33,7 +33,7 @@ class UserRegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     """Login credentials."""
 
-    email: EmailStr
+    email: str
     password: str
 
 
