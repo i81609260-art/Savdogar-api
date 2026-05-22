@@ -63,6 +63,20 @@ class UserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SuperAdminUserResponse(BaseModel):
+    """Superadmin uchun to'liq user ma'lumotlari."""
+    id: int
+    email: str
+    full_name: str
+    phone: Optional[str]
+    role: UserRole
+    company_id: Optional[int]
+    company_status: Optional[str] = None
+    is_active: bool
+    created_at: Optional[str] = None
+    model_config = {"from_attributes": True}
+
+
 class AuthResponse(BaseModel):
     """Login response with user and tokens."""
     user: UserResponse

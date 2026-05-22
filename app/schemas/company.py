@@ -24,6 +24,25 @@ class CompanyResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CompanyDetailResponse(BaseModel):
+    """Superadmin uchun kompaniya to'liq ma'lumotlari."""
+    id: int
+    name: str
+    description: Optional[str]
+    city: str
+    phone: str
+    email: str
+    status: CompanyStatus
+    rejection_reason: Optional[str]
+    owner_id: Optional[int]
+    created_at: datetime
+    updated_at: datetime
+    users_count: Optional[int] = 0
+    tours_count: Optional[int] = 0
+
+    model_config = {"from_attributes": True}
+
+
 class CompanyRejectRequest(BaseModel):
     """Reject company application."""
 
