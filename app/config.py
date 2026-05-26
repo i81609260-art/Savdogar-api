@@ -23,11 +23,16 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
 
     database_url: str = "sqlite+aiosqlite:///./savdogar.db"
+    # Railway persistent volume mount path (set to /data in Railway Variables)
+    data_dir: str = ""
 
     @property
     def async_database_url(self) -> str:
-        """Convert Railway's postgres:// URL to asyncpg-compatible format."""
+        """Use persistent volume path for SQLite, or convert postgres:// for asyncpg."""
         url = self.database_url
+        # If data_dir is set (Railway volume), store SQLite there
+        if self.data_dir and url.startswith("sqlite"):
+            return f"sqlite+aiosqlite:///{self.data_dir}/savdogar.db"
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+asyncpg://", 1)
         elif url.startswith("postgresql://") and "+asyncpg" not in url:

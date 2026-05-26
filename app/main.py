@@ -37,6 +37,8 @@ socket_app = socketio.ASGIApp(sio, socketio_path="")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Create tables and seed superadmin on startup."""
+    if settings.data_dir:
+        os.makedirs(settings.data_dir, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await seed_superadmin()
