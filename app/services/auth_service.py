@@ -33,7 +33,7 @@ class AuthService:
         self.db = db
 
     async def register_company(self, data: RegisterRequest) -> dict:
-        """Register a tour company with pending admin account."""
+        """Register a tour company — immediately active, superadmin can reject later."""
         existing = await self.db.execute(
             select(User).where(User.email == data.admin_email)
         )
@@ -49,7 +49,7 @@ class AuthService:
             city=data.company_city,
             phone=data.company_phone,
             email=data.company_email,
-            status=CompanyStatus.PENDING,
+            status=CompanyStatus.APPROVED,
         )
         self.db.add(company)
         await self.db.flush()
@@ -68,7 +68,7 @@ class AuthService:
         company.owner_id = admin.id
 
         return {
-            "message": "Ariza yuborildi. Superadmin tasdig'ini kuting.",
+            "message": "Kompaniya muvaffaqiyatli ro'yxatdan o'tdi.",
             "company_id": company.id,
         }
 

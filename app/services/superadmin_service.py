@@ -41,39 +41,42 @@ class SuperAdminService:
         return [CompanyResponse.model_validate(c) for c in result.scalars().all()]
 
     async def approve_company(self, company_id: int) -> CompanyResponse:
-        """Approve company and activate admin account."""
+        """Re-activate a previously rejected company and its users."""
         result = await self.db.execute(
-            select(Company).options(selectinload(Company.users)).where(Company.id == company_id)
+            select(Company).where(Company.id == company_id)
         )
         company = result.scalar_one_or_none()
         if not company:
             raise HTTPException(status_code=404, detail="Kompaniya topilmadi")
-        if company.status != CompanyStatus.PENDING:
-            raise HTTPException(status_code=400, detail="Kompaniya allaqachon ko'rib chiqilgan")
 
         company.status = CompanyStatus.APPROVED
-        admin_result = await self.db.execute(
-            select(User).where(
-                User.company_id == company.id,
-                User.role == UserRole.ADMIN,
-            )
+        company.rejection_reason = None
+        users_result = await self.db.execute(
+            select(User).where(User.company_id == company.id)
         )
-        admin = admin_result.scalar_one_or_none()
-        if admin:
-            admin.is_active = True
+        for u in users_result.scalars().all():
+            u.is_active = True
 
         await self.db.flush()
         return CompanyResponse.model_validate(company)
 
     async def reject_company(self, company_id: int, reason: str) -> CompanyResponse:
-        """Reject company application."""
-        result = await self.db.execute(select(Company).where(Company.id == company_id))
+        """Reject company and deactivate all its users."""
+        result = await self.db.execute(
+            select(Company).where(Company.id == company_id)
+        )
         company = result.scalar_one_or_none()
         if not company:
             raise HTTPException(status_code=404, detail="Kompaniya topilmadi")
 
         company.status = CompanyStatus.REJECTED
         company.rejection_reason = reason
+        users_result = await self.db.execute(
+            select(User).where(User.company_id == company.id)
+        )
+        for u in users_result.scalars().all():
+            u.is_active = False
+
         await self.db.flush()
         return CompanyResponse.model_validate(company)
 
