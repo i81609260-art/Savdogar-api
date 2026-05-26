@@ -40,6 +40,7 @@ class User(Base):
         ForeignKey("companies.id"), nullable=True
     )
     push_subscription: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    telegram_chat_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

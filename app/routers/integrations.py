@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.middleware.role_guard import role_required
 from app.models.user import User, UserRole
-from app.services.sayr_integration_service import SayrIntegrationService
+from app.services.sair_integration_service import SairIntegrationService
 
-router = APIRouter(prefix="/api/integrations/sayr", tags=["SAIR Integration"])
+router = APIRouter(prefix="/api/integrations/sair", tags=["SAIR Integration"])
 
 
 def _get_sio(request: Request):
@@ -21,7 +21,7 @@ def _get_sio(request: Request):
 @router.post("/webhook", summary="SAIR webhook (tashqi)")
 async def sair_webhook(
     request: Request,
-    x_sayr_signature: Optional[str] = Header(None, alias="X-Sayr-Signature"),
+    x_sair_signature: Optional[str] = Header(None, alias="X-Sayr-Signature"),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     """
@@ -35,11 +35,11 @@ async def sair_webhook(
     event_type = body.get("event") or body.get("type", "unknown")
     data = body.get("data", body)
 
-    service = SayrIntegrationService(db, _get_sio(request))
+    service = SairIntegrationService(db, _get_sio(request))
     return await service.handle_webhook(
         event_type,
         data,
-        signature=x_sayr_signature,
+        signature=x_sair_signature,
         raw_body=raw,
     )
 
@@ -56,8 +56,8 @@ async def connect_sair(
     """Savdogar admin SAIR integratsiyasini so'raydi."""
     if not current_user.company_id:
         return {"detail": "Kompaniyaga biriktirilmagansiz"}
-    service = SayrIntegrationService(db)
-    return await service.request_sayr_integration(current_user.company_id)
+    service = SairIntegrationService(db)
+    return await service.request_sair_integration(current_user.company_id)
 
 
 @router.get(
@@ -72,7 +72,7 @@ async def integration_status(
     """SAIR ulanish holati va statistika."""
     if not current_user.company_id:
         return {"status": "no_company"}
-    service = SayrIntegrationService(db)
+    service = SairIntegrationService(db)
     return await service.get_integration_status(current_user.company_id)
 
 
@@ -88,5 +88,5 @@ async def pos_sales(
     """SAIR dan kelgan sotuvlar — kim, nima sotib oldi."""
     if not current_user.company_id:
         return []
-    service = SayrIntegrationService(db)
+    service = SairIntegrationService(db)
     return await service.list_pos_notifications(current_user.company_id)

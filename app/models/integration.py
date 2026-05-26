@@ -1,4 +1,4 @@
-"""SAYR va boshqa tashqi platformalar integratsiya modellari."""
+"""SAIR va boshqa tashqi platformalar integratsiya modellari."""
 
 import enum
 from datetime import datetime
@@ -13,11 +13,11 @@ from app.database import Base
 class IntegrationProvider(str, enum.Enum):
     """Tashqi integratsiya provayderi."""
 
-    SAYR = "sayr"
+    SAIR = "sayr"
 
 
 class IntegrationStatus(str, enum.Enum):
-    """Savdogar ↔ SAYR ulanish holati."""
+    """Savdogar ↔ SAIR ulanish holati."""
 
     PENDING = "pending"
     ACTIVE = "active"
@@ -26,20 +26,20 @@ class IntegrationStatus(str, enum.Enum):
 
 
 class IntegrationConfig(Base):
-    """Savdogar kompaniyasining SAYR integratsiya sozlamalari."""
+    """Savdogar kompaniyasining SAIR integratsiya sozlamalari."""
 
     __tablename__ = "integration_configs"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), unique=True, index=True)
     provider: Mapped[IntegrationProvider] = mapped_column(
-        Enum(IntegrationProvider), default=IntegrationProvider.SAYR
+        Enum(IntegrationProvider), default=IntegrationProvider.SAIR
     )
     status: Mapped[IntegrationStatus] = mapped_column(
         Enum(IntegrationStatus), default=IntegrationStatus.PENDING
     )
-    sayr_company_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    sayr_api_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    sair_company_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    sair_api_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     webhook_secret: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     last_sync_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -53,7 +53,7 @@ class IntegrationConfig(Base):
 
 
 class ExternalTourMapping(Base):
-    """SAYR tur ID ↔ Savdogar tur ID bog'lanishi."""
+    """SAIR tur ID ↔ Savdogar tur ID bog'lanishi."""
 
     __tablename__ = "external_tour_mappings"
 
@@ -70,7 +70,7 @@ class ExternalTourMapping(Base):
 
 
 class IntegrationEvent(Base):
-    """SAYR webhook va sync hodisalari jurnali."""
+    """SAIR webhook va sync hodisalari jurnali."""
 
     __tablename__ = "integration_events"
 
@@ -87,7 +87,7 @@ class IntegrationEvent(Base):
 
 
 class PosSaleNotification(Base):
-    """SAYR orqali sotuv — Savdogar CRM/POS ga kelgan xabar."""
+    """SAIR orqali sotuv — Savdogar CRM/POS ga kelgan xabar."""
 
     __tablename__ = "pos_sale_notifications"
 

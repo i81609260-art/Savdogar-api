@@ -23,7 +23,7 @@ class CompanyStatus(str, enum.Enum):
 
 
 class Company(Base):
-    """Tour agency company registered on SAYR."""
+    """Tour agency company registered on SAIR."""
 
     __tablename__ = "companies"
 

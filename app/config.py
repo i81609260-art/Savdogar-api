@@ -24,11 +24,14 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite+aiosqlite:///./savdogar.db"
 
-    # SAYR tashqi platforma integratsiyasi
-    sayr_api_url: str = "http://localhost:8001"
-    sayr_api_key: str = ""
-    sayr_webhook_secret: str = ""
+    # SAIR tashqi platforma integratsiyasi
+    sair_api_url: str = "http://localhost:8001"
+    sair_api_key: str = ""
+    sair_webhook_secret: str = ""
     savdogar_public_url: str = "http://localhost:8000"
+
+    # Telegram bot
+    telegram_bot_token: str = ""
     cors_origins: str = (
         "http://localhost:3000,"
         "https://savdogar-sable.vercel.app,"

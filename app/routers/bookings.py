@@ -3,15 +3,19 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from sqlalchemy import select
 
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.middleware.role_guard import role_required
-from app.models.booking import BookingStatus
+from app.models.booking import Booking, BookingStatus
 from app.models.user import User, UserRole
 from app.schemas.booking import BookingCreate, BookingResponse, BookingStatusUpdate
 from app.services.booking_service import BookingService
+from app.services.pdf_service import generate_voucher
 from app.utils.pagination import PaginatedResponse
 
 router = APIRouter(prefix="/api/bookings", tags=["Bookings"])
@@ -65,6 +69,43 @@ async def get_booking(
     """Get single booking."""
     service = BookingService(db, _get_sio(request))
     return await service.get_booking(current_user, booking_id)
+
+
+@router.get(
+    "/{booking_id}/voucher",
+    summary="Bron voucheri PDF yuklab olish",
+)
+async def download_voucher(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Generate and return PDF voucher for a booking."""
+    from fastapi import HTTPException
+
+    result = await db.execute(
+        select(Booking)
+        .options(
+            selectinload(Booking.user),
+            selectinload(Booking.tour).selectinload(__import__("app.models.tour", fromlist=["Tour"]).Tour.company),
+        )
+        .where(Booking.id == booking_id)
+    )
+    booking = result.scalar_one_or_none()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Bron topilmadi")
+    if current_user.role == UserRole.USER and booking.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Ruxsat yo'q")
+    if current_user.role in (UserRole.ADMIN, UserRole.OPERATOR):
+        if booking.company_id != current_user.company_id:
+            raise HTTPException(status_code=403, detail="Ruxsat yo'q")
+
+    pdf_bytes = generate_voucher(booking)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="voucher-{booking_id}.pdf"'},
+    )
 
 
 @router.patch(

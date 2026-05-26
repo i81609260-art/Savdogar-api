@@ -127,6 +127,9 @@ class BookingService:
             )
             tour = tour_result.scalar_one()
             tour.available_slots += booking.guests_count
+            # Navbatdagi birinchi foydalanuvchiga xabar berish
+            from app.services.waitlist_service import WaitlistService
+            await WaitlistService(self.db, self.notifier.sio).notify_first(booking.tour_id)
 
         await self.db.flush()
 

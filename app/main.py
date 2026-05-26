@@ -1,4 +1,4 @@
-"""Savdogar FastAPI — CRM/POS + SAYR integratsiya."""
+"""Savdogar FastAPI — CRM/POS + SAIR integratsiya."""
 
 import os
 from contextlib import asynccontextmanager
@@ -21,6 +21,7 @@ from app.routers import (
     superadmin,
     tours,
 )
+from app.routers import waitlist, reviews, telegram as telegram_router
 
 settings = get_settings()
 
@@ -69,8 +70,8 @@ async def seed_superadmin():
 
 app = FastAPI(
     title=settings.app_name,
-    description="Savdogar — CRM/POS tizimi, SAYR tur platformasi bilan API integratsiya",
-    version="1.0.0",
+    description="Savdogar — CRM/POS tizimi, SAIR tur platformasi bilan API integratsiya",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
@@ -94,6 +95,9 @@ app.include_router(admin.router)
 app.include_router(superadmin.router)
 app.include_router(notifications.router)
 app.include_router(integrations.router)
+app.include_router(waitlist.router)
+app.include_router(reviews.router)
+app.include_router(telegram_router.router)
 
 app.state.sio = sio
 
