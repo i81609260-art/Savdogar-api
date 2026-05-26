@@ -31,6 +31,7 @@ async def list_tours(
     start_date: Optional[date] = None,
     min_slots: Optional[int] = None,
     search: Optional[str] = None,
+    company_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
 ) -> PaginatedResponse[TourResponse]:
     """Public tour catalog with filters."""
@@ -44,6 +45,7 @@ async def list_tours(
         start_date=start_date,
         min_slots=min_slots,
         search=search,
+        company_id=company_id,
     )
 
 

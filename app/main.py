@@ -22,6 +22,7 @@ from app.routers import (
     tours,
 )
 from app.routers import waitlist, reviews, telegram as telegram_router
+from app.routers import company_public
 
 settings = get_settings()
 
@@ -98,6 +99,7 @@ app.include_router(integrations.router)
 app.include_router(waitlist.router)
 app.include_router(reviews.router)
 app.include_router(telegram_router.router)
+app.include_router(company_public.router)
 
 app.state.sio = sio
 
