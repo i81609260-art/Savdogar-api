@@ -32,8 +32,8 @@ class AuthService:
         """Initialize with database session."""
         self.db = db
 
-    async def register_company(self, data: RegisterRequest) -> dict:
-        """Register a tour company — immediately active, superadmin can reject later."""
+    async def register_company(self, data: RegisterRequest) -> AuthResponse:
+        """Register a tour company and return tokens so the admin is logged in immediately."""
         existing = await self.db.execute(
             select(User).where(User.email == data.admin_email)
         )
@@ -66,11 +66,17 @@ class AuthService:
         self.db.add(admin)
         await self.db.flush()
         company.owner_id = admin.id
+        await self.db.flush()
+        await self.db.refresh(admin)
 
-        return {
-            "message": "Kompaniya muvaffaqiyatli ro'yxatdan o'tdi.",
-            "company_id": company.id,
-        }
+        token_data = {"sub": str(admin.id), "role": admin.role.value}
+        access = create_access_token(token_data)
+        refresh, _, _ = create_refresh_token(token_data)
+        return AuthResponse(
+            user=UserResponse.model_validate(admin),
+            access_token=access,
+            refresh_token=refresh,
+        )
 
     async def register_user(self, data: UserRegisterRequest) -> UserResponse:
         """Register an end-user account."""

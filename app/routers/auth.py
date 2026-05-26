@@ -21,12 +21,12 @@ from app.services.auth_service import AuthService
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
 
-@router.post("/register", summary="Kompaniya + admin ro'yxatdan o'tish")
+@router.post("/register", response_model=AuthResponse, summary="Kompaniya + admin ro'yxatdan o'tish")
 async def register_company(
     data: RegisterRequest,
     db: AsyncSession = Depends(get_db),
-) -> dict:
-    """Register tour company; awaits superadmin approval."""
+) -> AuthResponse:
+    """Register tour company and auto-login."""
     service = AuthService(db)
     return await service.register_company(data)
 
