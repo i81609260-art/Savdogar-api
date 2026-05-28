@@ -2,7 +2,9 @@
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -14,6 +16,11 @@ from app.schemas.company import CompanyDetailResponse, CompanyRejectRequest, Com
 from app.schemas.reports import SuperAdminStats
 from app.services.reports_service import ReportsService
 from app.services.superadmin_service import SuperAdminService
+from app.utils.security import hash_password
+
+
+class ResetPasswordRequest(BaseModel):
+    new_password: str
 
 router = APIRouter(prefix="/api/superadmin", tags=["SuperAdmin"])
 
@@ -101,6 +108,43 @@ async def all_users(
     """Barcha userlar — email, rol, kompaniya, faollik holati."""
     service = SuperAdminService(db)
     return await service.list_all_users()
+
+
+@router.patch(
+    "/users/{user_id}/reset-password",
+    summary="Foydalanuvchi parolini o'zgartirish",
+    dependencies=[Depends(role_required(UserRole.SUPERADMIN))],
+)
+async def reset_user_password(
+    user_id: int,
+    data: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Foydalanuvchi topilmadi")
+    user.hashed_password = hash_password(data.new_password)
+    await db.flush()
+    return {"message": "Parol muvaffaqiyatli o'zgartirildi"}
+
+
+@router.patch(
+    "/users/{user_id}/toggle-active",
+    summary="Foydalanuvchini faollashtirish/o'chirish",
+    dependencies=[Depends(role_required(UserRole.SUPERADMIN))],
+)
+async def toggle_user_active(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Foydalanuvchi topilmadi")
+    user.is_active = not user.is_active
+    await db.flush()
+    return {"is_active": user.is_active}
 
 
 @router.get(
