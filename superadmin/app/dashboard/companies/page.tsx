@@ -7,9 +7,9 @@ import api from "@/lib/api";
 import type { Company } from "@/lib/types";
 
 const STATUS_MAP = {
-  pending:  { label: "Kutilmoqda",    color: "#fbbf24", bg: "rgba(251,191,36,0.12)",  icon: Clock },
-  approved: { label: "Tasdiqlangan",  color: "#34d399", bg: "rgba(52,211,153,0.12)",  icon: CheckCircle2 },
-  rejected: { label: "Rad etilgan",   color: "#f87171", bg: "rgba(248,113,113,0.10)",   icon: XCircle },
+  pending:  { label: "Kutilmoqda",    color: "#3525cd", bg: "rgba(53,37,205,0.08)",   icon: Clock,       chip: "chip-pending" },
+  approved: { label: "Tasdiqlangan",  color: "#005338", bg: "rgba(78,222,163,0.15)",   icon: CheckCircle2, chip: "chip-success" },
+  rejected: { label: "Rad etilgan",   color: "#ba1a1a", bg: "rgba(186,26,26,0.10)",    icon: XCircle,      chip: "chip-error" },
 };
 
 const FILTERS = ["all", "pending", "approved", "rejected"] as const;
@@ -46,15 +46,15 @@ export default function CompaniesPage() {
   const filtered = data?.filter((c) => filter === "all" || c.status === filter) ?? [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative z-10">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2" style={{ fontFamily: "'Outfit',sans-serif" }}>
-            <Building2 className="h-6 w-6 text-purple-400" />
+          <h1 className="text-2xl font-bold text-[#0b1c30] flex items-center gap-2" style={{ fontFamily: "'Outfit',sans-serif" }}>
+            <Building2 className="h-6 w-6 text-[#3525cd]" />
             Kompaniyalar
           </h1>
-          <p className="text-sm text-slate-400 mt-0.5">{data?.length ?? 0} ta kompaniya</p>
+          <p className="text-sm text-[#464555] mt-0.5">{data?.length ?? 0} ta kompaniya</p>
         </div>
         {/* Filter pills */}
         <div className="flex gap-2 flex-wrap">
@@ -64,8 +64,8 @@ export default function CompaniesPage() {
               onClick={() => setFilter(s)}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
                 filter === s
-                  ? "bg-gradient-to-r from-purple-500 to-indigo-500 text-white border-transparent"
-                  : "bg-slate-900/60 text-slate-400 border-indigo-950/40 hover:bg-slate-900/80"
+                  ? "btn-gradient text-white border-transparent"
+                  : "bg-white/60 text-[#464555] border-slate-200 hover:bg-white/90"
               }`}
             >
               {s === "all" ? "Barchasi" : STATUS_MAP[s as keyof typeof STATUS_MAP].label}
@@ -85,7 +85,7 @@ export default function CompaniesPage() {
       )}
 
       {!isLoading && filtered.length === 0 && (
-        <div className="glass-card p-12 text-center text-sm text-slate-500">Kompaniya topilmadi</div>
+        <div className="glass p-12 rounded-2xl text-center text-sm text-slate-500">Kompaniya topilmadi</div>
       )}
 
       <div className="space-y-3">
@@ -95,41 +95,40 @@ export default function CompaniesPage() {
           const isOpen = expanded === company.id;
 
           return (
-            <div key={company.id} className="glass-card overflow-hidden">
+            <div key={company.id} className="glass rounded-2xl card-hover overflow-hidden">
               {/* Header row */}
               <div
                 className="flex items-center justify-between gap-4 p-4 cursor-pointer transition-all"
-                style={{ background: isOpen ? "rgba(255,255,255,0.02)" : undefined }}
+                style={{ background: isOpen ? "rgba(53,37,205,0.03)" : undefined }}
                 onClick={() => setExpanded(isOpen ? null : company.id)}
               >
                 <div className="flex items-center gap-3 min-w-0">
                   {company.logo_url ? (
-                    <img src={company.logo_url} alt={company.name} className="h-10 w-10 rounded-xl object-cover shrink-0 border border-indigo-950/50 shadow-sm" />
+                    <img src={company.logo_url} alt={company.name} className="h-10 w-10 rounded-xl object-cover shrink-0 border border-slate-200 shadow-sm" />
                   ) : (
                     <div
                       className="h-10 w-10 rounded-xl flex items-center justify-center text-white font-bold shrink-0 text-sm"
-                      style={{ background: "linear-gradient(135deg,#8b5cf6,#6d28d9)" }}
+                      style={{ background: "linear-gradient(135deg,#3525cd,#6b38d4)" }}
                     >
                       {company.name[0].toUpperCase()}
                     </div>
                   )}
                   <div className="min-w-0">
-                    <p className="font-semibold text-slate-100 truncate" style={{ fontFamily: "'Outfit',sans-serif" }}>
+                    <p className="font-semibold text-[#0b1c30] truncate" style={{ fontFamily: "'Outfit',sans-serif" }}>
                       {company.name}
                     </p>
-                    <p className="text-xs text-slate-400 flex items-center gap-1">
-                      <MapPin className="h-3 w-3 text-slate-500" />{company.city}
+                    <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                      <MapPin className="h-3.5 w-3.5 text-slate-400" />{company.city}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3 shrink-0">
-                  <div className="hidden sm:flex items-center gap-3 text-xs text-slate-400">
+                  <div className="hidden sm:flex items-center gap-3 text-xs text-slate-500">
                     <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" />{company.users_count} xodim</span>
                     <span className="flex items-center gap-1"><Map className="h-3.5 w-3.5" />{company.tours_count} tur paket</span>
                   </div>
-                  <span className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full"
-                    style={{ background: st.bg, color: st.color }}>
+                  <span className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full ${st.chip}`}>
                     <Icon className="h-3 w-3" />{st.label}
                   </span>
                   {isOpen ? <ChevronUp className="h-4 w-4 text-slate-500" /> : <ChevronDown className="h-4 w-4 text-slate-500" />}
@@ -138,35 +137,35 @@ export default function CompaniesPage() {
 
               {/* Expanded details */}
               {isOpen && (
-                <div className="border-t border-indigo-950/40 px-4 pb-4 pt-3 space-y-4 bg-slate-950/30">
+                <div className="border-t border-slate-200/60 px-5 pb-5 pt-4 space-y-4 bg-white/30">
                   {/* Stats on mobile */}
-                  <div className="sm:hidden grid grid-cols-2 gap-2 text-xs text-slate-400">
-                    <span className="flex items-center gap-1 bg-slate-900/60 p-2 rounded-lg"><Users className="h-3.5 w-3.5 text-purple-400" />{company.users_count} xodim</span>
-                    <span className="flex items-center gap-1 bg-slate-900/60 p-2 rounded-lg"><Map className="h-3.5 w-3.5 text-purple-400" />{company.tours_count} tur</span>
+                  <div className="sm:hidden grid grid-cols-2 gap-2 text-xs text-slate-500">
+                    <span className="flex items-center gap-1 bg-white/50 p-2 rounded-lg"><Users className="h-3.5 w-3.5 text-[#3525cd]" />{company.users_count} xodim</span>
+                    <span className="flex items-center gap-1 bg-white/50 p-2 rounded-lg"><Map className="h-3.5 w-3.5 text-[#3525cd]" />{company.tours_count} tur</span>
                   </div>
 
                   {/* Core details */}
-                  <div className="grid md:grid-cols-2 gap-4">
+                  <div className="grid md:grid-cols-2 gap-6">
                     <div className="space-y-2.5">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Aloqa ma'lumotlari</h4>
-                      <div className="space-y-1.5 text-sm text-slate-300">
-                        <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-slate-500" /><span>{company.phone}</span></div>
-                        <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-slate-500" /><span>{company.email}</span></div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Aloqa ma'lumotlari</h4>
+                      <div className="space-y-2 text-sm text-[#464555]">
+                        <div className="flex items-center gap-2"><Phone className="h-4 w-4 text-slate-400" /><span>{company.phone}</span></div>
+                        <div className="flex items-center gap-2"><Mail className="h-4 w-4 text-slate-400" /><span>{company.email}</span></div>
                         {company.description && (
-                          <p className="text-xs text-slate-400 mt-2 bg-slate-900/40 p-2.5 rounded-lg border border-indigo-950/40">{company.description}</p>
+                          <p className="text-xs text-[#777587] mt-2 bg-white/50 p-2.5 rounded-lg border border-slate-100">{company.description}</p>
                         )}
                       </div>
                     </div>
 
                     <div className="space-y-2.5">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Tizim ma'lumotlari</h4>
-                      <div className="space-y-1.5 text-sm text-slate-400">
-                        <div>Ro'yxatdan o'tgan sana: <span className="font-mono text-slate-300">{new Date(company.created_at).toLocaleDateString("uz-UZ")}</span></div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Tizim ma'lumotlari</h4>
+                      <div className="space-y-2 text-sm text-slate-500">
+                        <div>Ro'yxatdan o'tgan sana: <span className="font-mono text-[#0b1c30]">{new Date(company.created_at).toLocaleDateString("uz-UZ")}</span></div>
                         {company.rejection_reason && (
-                          <div className="bg-red-950/20 border border-red-900/40 text-red-300 p-2.5 rounded-lg text-xs flex gap-2">
+                          <div className="bg-red-50 border border-red-200 text-red-700 p-2.5 rounded-lg text-xs flex gap-2">
                             <ShieldAlert className="h-4 w-4 shrink-0" />
                             <div>
-                              <p className="font-semibold">Rad etish sababi:</p>
+                              <p className="font-bold">Rad etish sababi:</p>
                               <p className="mt-0.5">{company.rejection_reason}</p>
                             </div>
                           </div>
@@ -177,24 +176,24 @@ export default function CompaniesPage() {
 
                   {/* Reject reason input */}
                   {rejectingId === company.id && (
-                    <div className="bg-slate-900/60 p-3.5 rounded-xl border border-indigo-950/40 space-y-2.5">
-                      <label className="text-xs font-semibold text-slate-300 block">Rad etish sababini kiriting:</label>
+                    <div className="bg-white/60 p-3.5 rounded-xl border border-slate-200 space-y-2.5">
+                      <label className="text-xs font-semibold text-[#0b1c30] block">Rad etish sababini kiriting:</label>
                       <input
-                        className="sa-input"
+                        className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm input-glow"
                         placeholder="Masalan: noto'g'ri hujjatlar yoki telefon raqam"
                         value={rejectReason}
                         onChange={(e) => setRejectReason(e.target.value)}
                       />
                       <div className="flex gap-2">
                         <button
-                          className="px-3 py-1.5 text-xs font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                          className="px-3 py-1.5 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors cursor-pointer"
                           onClick={() => rejectMutation.mutate({ id: company.id, reason: rejectReason })}
                           disabled={!rejectReason || rejectMutation.isPending}
                         >
                           Rad etishni tasdiqlash
                         </button>
                         <button
-                          className="btn-ghost"
+                          className="px-3 py-1.5 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors cursor-pointer"
                           onClick={() => { setRejectingId(null); setRejectReason(""); }}
                         >
                           Bekor qilish
@@ -205,16 +204,16 @@ export default function CompaniesPage() {
 
                   {/* Actions */}
                   {company.status === "pending" && rejectingId !== company.id && (
-                    <div className="flex gap-2 border-t border-indigo-950/40 pt-3">
+                    <div className="flex gap-2 border-t border-slate-200/60 pt-3">
                       <button
-                        className="px-4 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all"
+                        className="px-4 py-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all cursor-pointer"
                         onClick={() => approveMutation.mutate(company.id)}
                         disabled={approveMutation.isPending}
                       >
                         Tasdiqlash
                       </button>
                       <button
-                        className="px-4 py-1.5 text-xs font-bold bg-red-950/40 hover:bg-red-950/70 text-red-400 border border-red-900/30 rounded-xl transition-all"
+                        className="px-4 py-1.5 text-xs font-bold bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg transition-all cursor-pointer"
                         onClick={() => setRejectingId(company.id)}
                       >
                         Rad etish

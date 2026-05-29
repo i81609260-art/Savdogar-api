@@ -11,20 +11,22 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       setAuth: (user: SAUser, token: string) => {
         if (typeof window !== "undefined") {
-          localStorage.setItem("sa_access_token", token);
+          localStorage.setItem("access_token", token);
+          localStorage.setItem("user", JSON.stringify(user));
         }
         set({ user, accessToken: token });
       },
       logout: () => {
         if (typeof window !== "undefined") {
-          localStorage.removeItem("sa_access_token");
-          localStorage.removeItem("sa_user");
+          localStorage.removeItem("access_token");
+          localStorage.removeItem("user");
+          localStorage.removeItem("refresh_token");
         }
         set({ user: null, accessToken: null });
       },
     }),
     {
-      name: "sa-auth-storage",
+      name: "auth-storage",
       partialize: (state) => ({ user: state.user, accessToken: state.accessToken }),
     }
   )

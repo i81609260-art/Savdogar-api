@@ -47,7 +47,7 @@ export default function LoginPage() {
         justifyContent: "center",
         padding: "24px",
         background:
-          "radial-gradient(ellipse at top, rgba(139,92,246,0.12) 0%, transparent 60%), #0a0a1a",
+          "radial-gradient(circle at top right, #e2dfff55, transparent 60%), radial-gradient(circle at bottom left, #eff4ff, transparent 70%), #f8f9ff",
       }}
     >
       <div style={{ width: "100%", maxWidth: "400px" }}>
@@ -58,62 +58,62 @@ export default function LoginPage() {
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
-              width: 64,
-              height: 64,
+              width: 60,
+              height: 60,
               borderRadius: 18,
-              background: "linear-gradient(135deg, #8b5cf6, #6d28d9)",
-              marginBottom: 20,
-              boxShadow: "0 8px 32px rgba(139,92,246,0.35)",
+              background: "linear-gradient(135deg, #3525cd, #6b38d4)",
+              marginBottom: 16,
+              boxShadow: "0 8px 24px rgba(53,37,205,0.25)",
             }}
           >
-            <Shield size={32} color="#fff" />
+            <Shield size={28} color="#fff" />
           </div>
           <h1
             style={{
-              fontSize: 28,
+              fontSize: 26,
               fontWeight: 800,
               fontFamily: "'Outfit', sans-serif",
-              background: "linear-gradient(135deg, #c4b5fd, #8b5cf6)",
+              background: "linear-gradient(135deg, #3525cd 0%, #6b38d4 100%)",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
-              marginBottom: 8,
+              marginBottom: 6,
             }}
           >
-            SAVDOGAR HQ
+            Savdogar HQ
           </h1>
-          <p style={{ color: "#64748b", fontSize: 14 }}>
+          <p style={{ color: "#464555", fontSize: 13, fontWeight: 500 }}>
             Superadmin boshqaruv tizimi
           </p>
         </div>
 
         {/* Card */}
         <div
-          className="glass-card"
-          style={{ padding: "32px" }}
+          className="glass"
+          style={{ padding: "32px", borderRadius: 24, boxShadow: "0 10px 30px rgba(53, 37, 205, 0.05)" }}
         >
           <h2
             style={{
               fontSize: 18,
               fontWeight: 700,
-              color: "#f1f0ff",
+              color: "#0b1c30",
               marginBottom: 4,
             }}
           >
             Kirish
           </h2>
-          <p style={{ color: "#64748b", fontSize: 13, marginBottom: 28 }}>
+          <p style={{ color: "#777587", fontSize: 12, marginBottom: 28 }}>
             Tizimga kirish uchun ma'lumotlaringizni kiriting
           </p>
 
-          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             {/* Email */}
             <div>
               <label
                 style={{
                   display: "block",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#94a3b8",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "#464555",
                   marginBottom: 8,
                 }}
               >
@@ -122,17 +122,27 @@ export default function LoginPage() {
               <div style={{ position: "relative" }}>
                 <Mail
                   size={16}
-                  color="#475569"
+                  color="#94a3b8"
                   style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)" }}
                 />
                 <input
-                  className="sa-input"
+                  className="input-glow"
                   type="email"
                   placeholder="admin@savdogar.uz"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  style={{ paddingLeft: 42 }}
+                  style={{
+                    width: "100%",
+                    height: "44px",
+                    paddingLeft: 42,
+                    paddingRight: 14,
+                    borderRadius: 12,
+                    border: "1px solid #cbd5e1",
+                    background: "rgba(255,255,255,0.7)",
+                    fontSize: 14,
+                    color: "#0b1c30",
+                  }}
                 />
               </div>
             </div>
@@ -142,9 +152,9 @@ export default function LoginPage() {
               <label
                 style={{
                   display: "block",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#94a3b8",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "#464555",
                   marginBottom: 8,
                 }}
               >
@@ -153,17 +163,27 @@ export default function LoginPage() {
               <div style={{ position: "relative" }}>
                 <Lock
                   size={16}
-                  color="#475569"
+                  color="#94a3b8"
                   style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)" }}
                 />
                 <input
-                  className="sa-input"
+                  className="input-glow"
                   type={showPass ? "text" : "password"}
                   placeholder="••••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  style={{ paddingLeft: 42, paddingRight: 44 }}
+                  style={{
+                    width: "100%",
+                    height: "44px",
+                    paddingLeft: 42,
+                    paddingRight: 44,
+                    borderRadius: 12,
+                    border: "1px solid #cbd5e1",
+                    background: "rgba(255,255,255,0.7)",
+                    fontSize: 14,
+                    color: "#0b1c30",
+                  }}
                 />
                 <button
                   type="button"
@@ -176,7 +196,7 @@ export default function LoginPage() {
                     background: "none",
                     border: "none",
                     cursor: "pointer",
-                    color: "#475569",
+                    color: "#94a3b8",
                     display: "flex",
                     padding: 0,
                   }}
@@ -194,11 +214,12 @@ export default function LoginPage() {
                   alignItems: "center",
                   gap: 8,
                   padding: "10px 14px",
-                  borderRadius: 10,
-                  background: "rgba(239,68,68,0.12)",
-                  border: "1px solid rgba(239,68,68,0.25)",
-                  color: "#fca5a5",
-                  fontSize: 13,
+                  borderRadius: 12,
+                  background: "rgba(186,26,26,0.06)",
+                  border: "1px solid rgba(186,26,26,0.15)",
+                  color: "#ba1a1a",
+                  fontSize: 12,
+                  fontWeight: 600,
                 }}
               >
                 <AlertCircle size={15} />
@@ -207,10 +228,17 @@ export default function LoginPage() {
             )}
 
             <button
-              className="btn-primary"
+              className="btn-gradient"
               type="submit"
               disabled={loading}
-              style={{ width: "100%", marginTop: 4 }}
+              style={{
+                width: "100%",
+                marginTop: 4,
+                height: 44,
+                borderRadius: 12,
+                fontSize: 14,
+                fontWeight: 700,
+              }}
             >
               {loading ? (
                 <span style={{ opacity: 0.8 }}>Kirish...</span>
@@ -227,8 +255,9 @@ export default function LoginPage() {
         <p
           style={{
             textAlign: "center",
-            color: "#334155",
-            fontSize: 12,
+            color: "#94a3b8",
+            fontSize: 11,
+            fontWeight: 500,
             marginTop: 24,
           }}
         >

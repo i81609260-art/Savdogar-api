@@ -7,16 +7,16 @@ import api from "@/lib/api";
 import type { SAUser } from "@/lib/types";
 
 const ROLE_MAP = {
-  superadmin: { label: "Superadmin", color: "#f87171", bg: "rgba(248,113,113,0.12)", icon: Shield },
-  admin:      { label: "Admin",      color: "#818cf8", bg: "rgba(129,140,248,0.12)", icon: Building2 },
-  operator:   { label: "Operator",   color: "#34d399", bg: "rgba(52,211,153,0.12)", icon: Wrench },
-  user:       { label: "User",       color: "#94a3b8", bg: "rgba(255,255,255,0.06)", icon: User },
+  superadmin: { label: "Superadmin", color: "#b91c1c", bg: "rgba(185,28,28,0.10)", icon: Shield },
+  admin:      { label: "Admin",      color: "#3525cd", bg: "rgba(53,37,205,0.08)",   icon: Building2 },
+  operator:   { label: "Operator",   color: "#047857", bg: "rgba(4,120,87,0.08)",    icon: Wrench },
+  user:       { label: "User",       color: "#4b5563", bg: "rgba(75,85,99,0.08)",    icon: User },
 };
 
 const COMPANY_STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  pending:  { label: "Kutilmoqda",   color: "#fbbf24", bg: "rgba(251,191,36,0.12)" },
-  approved: { label: "Tasdiqlangan", color: "#34d399", bg: "rgba(52,211,153,0.12)" },
-  rejected: { label: "Rad etilgan",  color: "#f87171", bg: "rgba(248,113,113,0.10)" },
+  pending:  { label: "Kutilmoqda",   color: "#3525cd", bg: "rgba(53,37,205,0.08)" },
+  approved: { label: "Tasdiqlangan", color: "#005338", bg: "rgba(78,222,163,0.15)" },
+  rejected: { label: "Rad etilgan",  color: "#ba1a1a", bg: "rgba(186,26,26,0.10)" },
 };
 
 function ResetPasswordModal({ user, onClose }: { user: SAUser; onClose: () => void }) {
@@ -31,50 +31,50 @@ function ResetPasswordModal({ user, onClose }: { user: SAUser; onClose: () => vo
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-slate-900 border border-indigo-950/80 rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-2xl">
         <div>
-          <h2 className="text-lg font-bold text-slate-100">Parol o'zgartirish</h2>
-          <p className="text-sm text-slate-400 mt-0.5">{user.full_name} — {user.email}</p>
+          <h2 className="text-lg font-bold text-[#0b1c30]">Parol o'zgartirish</h2>
+          <p className="text-sm text-slate-500 mt-0.5">{user.full_name} — {user.email}</p>
         </div>
 
         {done ? (
-          <div className="rounded-xl bg-emerald-950/20 border border-emerald-900/40 p-4 text-center">
-            <p className="text-emerald-400 font-medium text-sm">✅ Parol muvaffaqiyatli o'zgartirildi</p>
+          <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 text-center">
+            <p className="text-emerald-700 font-bold text-sm">✅ Parol muvaffaqiyatli o'zgartirildi</p>
           </div>
         ) : (
           <>
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-400 block">Yangi parol</label>
+              <label className="text-xs font-bold text-slate-500 block">Yangi parol</label>
               <div className="relative">
                 <input
                   type={show ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Kamida 8 ta belgi"
-                  className="sa-input pr-10"
+                  className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm input-glow pr-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShow(!show)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
                   {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
             {mutation.isError && (
-              <p className="text-xs text-red-400">Xatolik yuz berdi</p>
+              <p className="text-xs text-red-600 font-medium">Xatolik yuz berdi</p>
             )}
             <div className="flex gap-2">
               <button
-                className="btn-primary flex-1"
+                className="btn-gradient flex-1 py-2 rounded-lg text-sm font-bold cursor-pointer"
                 onClick={() => mutation.mutate()}
                 disabled={password.length < 8 || mutation.isPending}
               >
                 {mutation.isPending ? "Saqlanmoqda..." : "Saqlash"}
               </button>
-              <button className="btn-ghost flex-1 justify-center" onClick={onClose}>
+              <button className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm cursor-pointer flex-1 text-center" onClick={onClose}>
                 Bekor
               </button>
             </div>
@@ -82,7 +82,7 @@ function ResetPasswordModal({ user, onClose }: { user: SAUser; onClose: () => vo
         )}
 
         {done && (
-          <button className="btn-primary w-full" onClick={onClose}>
+          <button className="btn-gradient w-full py-2 rounded-lg text-sm font-bold cursor-pointer" onClick={onClose}>
             Yopish
           </button>
         )}
@@ -122,25 +122,25 @@ export default function SuperAdminUsersPage() {
   }) ?? [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative z-10">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2" style={{ fontFamily: "'Outfit', sans-serif" }}>
-          <Users className="h-6 w-6 text-purple-400" />
+        <h1 className="text-2xl font-bold text-[#0b1c30] flex items-center gap-2" style={{ fontFamily: "'Outfit', sans-serif" }}>
+          <Users className="h-6 w-6 text-[#3525cd]" />
           Foydalanuvchilar
-          {data && <span className="text-sm font-normal text-slate-400">({data.length} ta)</span>}
+          {data && <span className="text-sm font-normal text-slate-500">({data.length} ta)</span>}
         </h1>
       </div>
 
       {/* Filter and Search Bar */}
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
             placeholder="Ism, email yoki telefon..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="sa-input pl-9"
+            className="w-full h-10 pl-9 pr-3 border border-slate-200 rounded-xl text-sm bg-white/60 input-glow"
           />
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -150,8 +150,8 @@ export default function SuperAdminUsersPage() {
               onClick={() => setRoleFilter(r)}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors border ${
                 roleFilter === r
-                  ? "bg-gradient-to-r from-purple-500 to-indigo-500 text-white border-transparent"
-                  : "bg-slate-900/60 text-slate-400 border-indigo-950/40 hover:bg-slate-900/80"
+                  ? "btn-gradient text-white border-transparent"
+                  : "bg-white/60 text-[#464555] border-slate-200 hover:bg-white/90"
               }`}
             >
               {r === "all" ? "Barchasi" : ROLE_MAP[r as keyof typeof ROLE_MAP]?.label ?? r}
@@ -175,26 +175,26 @@ export default function SuperAdminUsersPage() {
       )}
 
       {!isLoading && filtered.length === 0 && (
-        <div className="glass-card p-12 text-center text-slate-500 text-sm">Foydalanuvchi topilmadi</div>
+        <div className="glass p-12 rounded-2xl text-center text-slate-400 text-sm">Foydalanuvchi topilmadi</div>
       )}
 
       {/* Table view */}
       {filtered.length > 0 && (
-        <div className="glass-card overflow-hidden">
+        <div className="glass rounded-2xl overflow-hidden border border-slate-200/60 shadow-sm">
           <div className="overflow-x-auto">
-            <table className="sa-table">
+            <table className="w-full border-collapse">
               <thead>
-                <tr>
-                  <th>Foydalanuvchi</th>
-                  <th>Email</th>
-                  <th>Telefon</th>
-                  <th>Rol</th>
-                  <th>Kompaniya</th>
-                  <th>Holat</th>
-                  <th>Amallar</th>
+                <tr className="bg-slate-50/50 border-b border-slate-200">
+                  <th className="p-4 text-left text-xs font-bold uppercase tracking-wider text-slate-400">Foydalanuvchi</th>
+                  <th className="p-4 text-left text-xs font-bold uppercase tracking-wider text-slate-400">Email</th>
+                  <th className="p-4 text-left text-xs font-bold uppercase tracking-wider text-slate-400">Telefon</th>
+                  <th className="p-4 text-left text-xs font-bold uppercase tracking-wider text-slate-400">Rol</th>
+                  <th className="p-4 text-left text-xs font-bold uppercase tracking-wider text-slate-400">Kompaniya</th>
+                  <th className="p-4 text-left text-xs font-bold uppercase tracking-wider text-slate-400">Holat</th>
+                  <th className="p-4 text-left text-xs font-bold uppercase tracking-wider text-slate-400">Amallar</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100">
                 {filtered.map((user) => {
                   const roleInfo = ROLE_MAP[user.role];
                   const RoleIcon = roleInfo.icon;
@@ -203,68 +203,68 @@ export default function SuperAdminUsersPage() {
                     : null;
 
                   return (
-                    <tr key={user.id}>
-                      <td>
+                    <tr key={user.id} className="hover:bg-white/40 transition-colors">
+                      <td className="p-4">
                         <div className="flex items-center gap-2">
-                          <div className="h-8 w-8 rounded-lg bg-indigo-950 flex items-center justify-center text-purple-300 text-xs font-bold shrink-0 border border-indigo-900/35">
+                          <div className="h-8 w-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#3525cd] text-xs font-bold shrink-0">
                             {user.full_name[0]?.toUpperCase()}
                           </div>
                           <div>
-                            <p className="font-semibold text-slate-200">{user.full_name}</p>
-                            <p className="text-[10px] text-slate-500 font-mono">ID: {user.id}</p>
+                            <p className="font-semibold text-[#0b1c30]">{user.full_name}</p>
+                            <p className="text-[10px] text-slate-400 font-mono">ID: {user.id}</p>
                           </div>
                         </div>
                       </td>
-                      <td>
-                        <span className="font-mono text-xs text-slate-300">
+                      <td className="p-4">
+                        <span className="font-mono text-xs text-slate-600">
                           {user.email}
                         </span>
                       </td>
-                      <td className="text-slate-300 font-mono">
-                        {user.phone || <span className="text-slate-600">—</span>}
+                      <td className="p-4 text-[#464555] font-mono text-xs">
+                        {user.phone || <span className="text-slate-300">—</span>}
                       </td>
-                      <td>
-                        <span className="badge" style={{ background: roleInfo.bg, color: roleInfo.color }}>
-                          <RoleIcon className="h-3.5 w-3.5 mr-1" />
+                      <td className="p-4">
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: roleInfo.bg, color: roleInfo.color }}>
+                          <RoleIcon className="h-3 w-3" />
                           {roleInfo.label}
                         </span>
                       </td>
-                      <td>
+                      <td className="p-4">
                         {user.company_id ? (
                           <div className="space-y-1">
-                            <p className="text-xs text-slate-300 font-semibold">{user.company_name || `ID: ${user.company_id}`}</p>
+                            <p className="text-xs text-[#0b1c30] font-semibold">{user.company_name || `ID: ${user.company_id}`}</p>
                             {companyStatus && (
-                              <span className="badge text-[10px]" style={{ background: companyStatus.bg, color: companyStatus.color }}>
+                              <span className="inline-flex text-[9px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: companyStatus.bg, color: companyStatus.color }}>
                                 {companyStatus.label}
                               </span>
                             )}
                           </div>
                         ) : (
-                          <span className="text-slate-600">—</span>
+                          <span className="text-slate-300">—</span>
                         )}
                       </td>
-                      <td>
-                        <span className={`badge ${user.is_active ? "badge-success" : "badge-muted"}`}>
+                      <td className="p-4">
+                        <span className={`inline-flex text-[11px] font-bold px-2 py-0.5 rounded-full ${user.is_active ? "chip-success" : "bg-slate-100 text-slate-400"}`}>
                           {user.is_active ? "Faol" : "Nofaol"}
                         </span>
                       </td>
-                      <td>
+                      <td className="p-4">
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => setResetTarget(user)}
-                            className="btn-ghost px-2 h-8 hover:border-purple-500/50 hover:text-purple-300"
+                            className="inline-flex items-center h-8 px-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer"
                             title="Parolni o'zgartirish"
                           >
-                            <KeyRound className="h-3.5 w-3.5 mr-1" />
+                            <KeyRound className="h-3.5 w-3.5 mr-1 text-[#3525cd]" />
                             Parol
                           </button>
                           {user.role !== "superadmin" && (
                             <button
                               onClick={() => toggleActive.mutate(user.id)}
-                              className={`btn-ghost px-2 h-8 ${
+                              className={`inline-flex items-center h-8 px-2 rounded-lg border text-xs font-semibold cursor-pointer ${
                                 user.is_active
-                                  ? "hover:border-red-500/50 hover:text-red-400"
-                                  : "hover:border-emerald-500/50 hover:text-emerald-400"
+                                  ? "border-red-200 bg-red-50 hover:bg-red-100 text-red-600"
+                                  : "border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-600"
                               }`}
                               title={user.is_active ? "O'chirish" : "Faollashtirish"}
                             >
