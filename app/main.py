@@ -42,6 +42,52 @@ async def lifespan(app: FastAPI):
         os.makedirs(settings.data_dir, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        
+        def repair_schema(connection):
+            raw_conn = connection.connection
+            cursor = raw_conn.cursor()
+            
+            # 1. companies.logo_url
+            try:
+                cursor.execute("PRAGMA table_info(companies)")
+                cols = [r[1] for r in cursor.fetchall()]
+                if cols and "logo_url" not in cols:
+                    cursor.execute("ALTER TABLE companies ADD COLUMN logo_url VARCHAR(500)")
+                    print("Programmatic schema repair: Added logo_url to companies (SQLite)")
+            except Exception:
+                pass
+            try:
+                cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='companies'")
+                cols = [r[0] for r in cursor.fetchall()]
+                if cols and "logo_url" not in cols:
+                    cursor.execute("ALTER TABLE companies ADD COLUMN logo_url VARCHAR(500)")
+                    print("Programmatic schema repair: Added logo_url to companies (Postgres)")
+            except Exception:
+                pass
+
+            # 2. users.telegram_chat_id
+            try:
+                cursor.execute("PRAGMA table_info(users)")
+                cols = [r[1] for r in cursor.fetchall()]
+                if cols and "telegram_chat_id" not in cols:
+                    cursor.execute("ALTER TABLE users ADD COLUMN telegram_chat_id VARCHAR(50)")
+                    print("Programmatic schema repair: Added telegram_chat_id to users (SQLite)")
+            except Exception:
+                pass
+            try:
+                cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='users'")
+                cols = [r[0] for r in cursor.fetchall()]
+                if cols and "telegram_chat_id" not in cols:
+                    cursor.execute("ALTER TABLE users ADD COLUMN telegram_chat_id VARCHAR(50)")
+                    print("Programmatic schema repair: Added telegram_chat_id to users (Postgres)")
+            except Exception:
+                pass
+
+        try:
+            await conn.run_sync(repair_schema)
+        except Exception as e:
+            print(f"Error during programmatic schema repair: {e}")
+
     await seed_superadmin()
     yield
 
