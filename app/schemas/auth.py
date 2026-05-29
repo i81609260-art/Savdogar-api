@@ -14,6 +14,7 @@ class RegisterRequest(BaseModel):
     company_city: str = Field(..., min_length=2)
     company_phone: str = Field(..., min_length=9)
     company_email: EmailStr
+    company_logo_url: Optional[str] = None
     admin_email: EmailStr
     admin_password: str = Field(..., min_length=8)
     admin_full_name: str = Field(..., min_length=2)

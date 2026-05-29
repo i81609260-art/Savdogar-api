@@ -49,6 +49,7 @@ class AuthService:
             city=data.company_city,
             phone=data.company_phone,
             email=data.company_email,
+            logo_url=data.company_logo_url,
             status=CompanyStatus.APPROVED,
         )
         self.db.add(company)

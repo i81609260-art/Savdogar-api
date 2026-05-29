@@ -37,6 +37,7 @@ class Company(Base):
         Enum(CompanyStatus), default=CompanyStatus.PENDING
     )
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    logo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     owner_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("users.id"), nullable=True
     )

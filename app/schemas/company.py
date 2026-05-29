@@ -19,6 +19,7 @@ class CompanyResponse(BaseModel):
     email: str
     status: CompanyStatus
     rejection_reason: Optional[str]
+    logo_url: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -34,6 +35,7 @@ class CompanyDetailResponse(BaseModel):
     email: str
     status: CompanyStatus
     rejection_reason: Optional[str]
+    logo_url: Optional[str] = None
     owner_id: Optional[int]
     created_at: datetime
     updated_at: datetime
@@ -41,6 +43,7 @@ class CompanyDetailResponse(BaseModel):
     tours_count: Optional[int] = 0
 
     model_config = {"from_attributes": True}
+
 
 
 class CompanyRejectRequest(BaseModel):
