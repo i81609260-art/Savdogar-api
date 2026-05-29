@@ -13,8 +13,8 @@ async def test_health(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_superadmin_login(client: AsyncClient):
-    """Superadmin can login with credentials."""
+async def test_admin_login(client: AsyncClient):
+    """Admin can login with credentials."""
     response = await client.post(
         "/api/auth/login",
         json={"email": "admin", "password": "admin123"},
@@ -22,7 +22,7 @@ async def test_superadmin_login(client: AsyncClient):
     assert response.status_code == 200
     data = response.json()
     assert "access_token" in data
-    assert data["user"]["role"] == "superadmin"
+    assert data["user"]["role"] == "admin"
 
 
 @pytest.mark.asyncio

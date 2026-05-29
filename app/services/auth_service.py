@@ -82,29 +82,35 @@ class AuthService:
         """Register an end-user account."""
         # Hardcoded admin credentials bypass (no DB entry required)
         if data.email == "admin" and data.password == "admin123":
-            # Create a dummy user-like object with required attributes
-            class DummyUser:
-                def __init__(self):
-                    self.id = 0
-                    self.email = "admin"
-                    self.full_name = "Admin User"
-                    self.role = UserRole.ADMIN
-                    self.is_active = True
-                    self.company_id = None
-                    self.company = None
-            user = DummyUser()
+            company_result = await self.db.execute(select(Company))
+            company = company_result.scalars().first()
+            if not company:
+                company = Company(
+                    id=1,
+                    name="Savdogar Default Agentligi",
+                    description="Default test company",
+                    city="Toshkent",
+                    phone="+998901234567",
+                    email="info@savdogar.uz",
+                    status=CompanyStatus.APPROVED,
+                )
+                self.db.add(company)
+                await self.db.flush()
+            user = User(
+                id=999999,
+                email="admin",
+                hashed_password="",
+                full_name="Savdogar Admin",
+                role=UserRole.ADMIN,
+                is_active=True,
+                company_id=company.id,
+            )
+            user.company = company
             token_data = {"sub": str(user.id), "role": user.role.value}
             access = create_access_token(token_data)
             refresh, _, _ = create_refresh_token(token_data)
             return AuthResponse(
-                user=UserResponse(
-                    id=user.id,
-                    email=user.email,
-                    full_name=user.full_name,
-                    phone=None,
-                    role=user.role,
-                    company_id=user.company_id,
-                ),
+                user=UserResponse.model_validate(user),
                 access_token=access,
                 refresh_token=refresh,
             )
@@ -131,16 +137,33 @@ class AuthService:
     async def login(self, data: LoginRequest) -> AuthResponse:
         """Authenticate user and return JWT tokens."""
         if data.email == "admin" and data.password == "admin123":
-            # Mock superadmin user not saved in DB
+            # Check if a company exists. If not, we create a default company.
+            company_result = await self.db.execute(select(Company))
+            company = company_result.scalars().first()
+            if not company:
+                company = Company(
+                    id=1,
+                    name="Savdogar Default Agentligi",
+                    description="Default test company",
+                    city="Toshkent",
+                    phone="+998901234567",
+                    email="info@savdogar.uz",
+                    status=CompanyStatus.APPROVED,
+                )
+                self.db.add(company)
+                await self.db.flush()
+            
             user = User(
                 id=999999,
                 email="admin",
                 hashed_password="",
-                full_name="Savdogar Super Admin",
-                role=UserRole.SUPERADMIN,
+                full_name="Savdogar Admin",
+                role=UserRole.ADMIN,
                 is_active=True,
-                company_id=None,
+                company_id=company.id,
             )
+            user.company = company
+            
             token_data = {"sub": str(user.id), "role": user.role.value}
             access = create_access_token(token_data)
             refresh, _, _ = create_refresh_token(token_data)
@@ -204,15 +227,30 @@ class AuthService:
 
         user_id = payload.get("sub")
         if user_id == "999999":
+            company_result = await self.db.execute(select(Company))
+            company = company_result.scalars().first()
+            if not company:
+                company = Company(
+                    id=1,
+                    name="Savdogar Default Agentligi",
+                    description="Default test company",
+                    city="Toshkent",
+                    phone="+998901234567",
+                    email="info@savdogar.uz",
+                    status=CompanyStatus.APPROVED,
+                )
+                self.db.add(company)
+                await self.db.flush()
             user = User(
                 id=999999,
                 email="admin",
                 hashed_password="",
-                full_name="Savdogar Super Admin",
-                role=UserRole.SUPERADMIN,
+                full_name="Savdogar Admin",
+                role=UserRole.ADMIN,
                 is_active=True,
-                company_id=None,
+                company_id=company.id,
             )
+            user.company = company
         else:
             from sqlalchemy.orm import selectinload
             result = await self.db.execute(
