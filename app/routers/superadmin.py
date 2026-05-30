@@ -22,6 +22,44 @@ from app.utils.security import hash_password
 class ResetPasswordRequest(BaseModel):
     new_password: str
 
+
+class UserCreateRequest(BaseModel):
+    email: str
+    password: str
+    full_name: str
+    phone: Optional[str] = None
+    role: str = "user"
+    company_id: Optional[int] = None
+    is_active: bool = True
+
+
+class UserUpdateRequest(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    role: Optional[str] = None
+    company_id: Optional[int] = None
+    is_active: Optional[bool] = None
+    password: Optional[str] = None
+
+
+class CompanyCreateRequest(BaseModel):
+    name: str
+    city: str
+    phone: str
+    email: str
+    description: Optional[str] = None
+
+
+class CompanyUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    city: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    status: Optional[str] = None
+
+
 router = APIRouter(prefix="/api/superadmin", tags=["SuperAdmin"])
 
 
@@ -145,6 +183,88 @@ async def toggle_user_active(
     user.is_active = not user.is_active
     await db.flush()
     return {"is_active": user.is_active}
+
+
+@router.post(
+    "/users",
+    summary="Yangi foydalanuvchi yaratish",
+    dependencies=[Depends(role_required(UserRole.SUPERADMIN))],
+)
+async def create_user(
+    data: UserCreateRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    service = SuperAdminService(db)
+    return await service.create_user(data.model_dump())
+
+
+@router.put(
+    "/users/{user_id}",
+    summary="Foydalanuvchi ma'lumotlarini yangilash",
+    dependencies=[Depends(role_required(UserRole.SUPERADMIN))],
+)
+async def update_user(
+    user_id: int,
+    data: UserUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    service = SuperAdminService(db)
+    return await service.update_user(user_id, data.model_dump(exclude_none=True))
+
+
+@router.delete(
+    "/users/{user_id}",
+    summary="Foydalanuvchini o'chirish",
+    dependencies=[Depends(role_required(UserRole.SUPERADMIN))],
+)
+async def delete_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    service = SuperAdminService(db)
+    await service.delete_user(user_id)
+    return {"message": "Foydalanuvchi o'chirildi"}
+
+
+@router.post(
+    "/companies",
+    summary="Yangi kompaniya yaratish",
+    dependencies=[Depends(role_required(UserRole.SUPERADMIN))],
+)
+async def create_company(
+    data: CompanyCreateRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    service = SuperAdminService(db)
+    return await service.create_company(data.model_dump())
+
+
+@router.put(
+    "/companies/{company_id}",
+    summary="Kompaniya ma'lumotlarini yangilash",
+    dependencies=[Depends(role_required(UserRole.SUPERADMIN))],
+)
+async def update_company(
+    company_id: int,
+    data: CompanyUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    service = SuperAdminService(db)
+    return await service.update_company(company_id, data.model_dump(exclude_none=True))
+
+
+@router.delete(
+    "/companies/{company_id}",
+    summary="Kompaniyani o'chirish",
+    dependencies=[Depends(role_required(UserRole.SUPERADMIN))],
+)
+async def delete_company(
+    company_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    service = SuperAdminService(db)
+    await service.delete_company(company_id)
+    return {"message": "Kompaniya o'chirildi"}
 
 
 @router.get(
