@@ -52,6 +52,15 @@ async def company_rating(
     return await ReviewService(db).get_company_rating(company_id)
 
 
+@router.get("/companies/{company_id}/list", summary="Kompaniya sharhlar (public)")
+async def company_reviews_public(
+    company_id: int,
+    limit: int = 6,
+    db: AsyncSession = Depends(get_db),
+) -> List[dict]:
+    return await ReviewService(db).list_company_reviews_public(company_id, limit)
+
+
 @router.get(
     "/admin",
     summary="Admin uchun sharhlar ro'yxati",

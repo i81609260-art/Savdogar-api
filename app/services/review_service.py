@@ -77,6 +77,17 @@ class ReviewService:
         avg, count = result.one()
         return {"average": round(float(avg or 0), 1), "count": count}
 
+    async def list_company_reviews_public(self, company_id: int, limit: int = 6) -> List[dict]:
+        result = await self.db.execute(
+            select(Review)
+            .options(selectinload(Review.user), selectinload(Review.tour))
+            .where(Review.company_id == company_id)
+            .order_by(Review.created_at.desc())
+            .limit(limit)
+        )
+        reviews = result.scalars().all()
+        return [self._to_dict(r, r.user) for r in reviews]
+
     async def list_admin_reviews(self, user: User) -> List[dict]:
         """Admin sees reviews for their company."""
         query = (
