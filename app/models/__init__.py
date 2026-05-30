@@ -1,6 +1,7 @@
 """ORM models package."""
 
 from app.models.booking import Booking, BookingStatus
+from app.models.guest_review import GuestReview
 from app.models.integration import (
     ExternalTourMapping,
     IntegrationConfig,
@@ -17,6 +18,7 @@ from app.models.user import RefreshTokenBlacklist, User, UserRole
 __all__ = [
     "Booking",
     "BookingStatus",
+    "GuestReview",
     "ExternalTourMapping",
     "IntegrationConfig",
     "IntegrationEvent",

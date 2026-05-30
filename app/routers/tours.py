@@ -24,7 +24,7 @@ settings = get_settings()
 @router.get("", response_model=PaginatedResponse[TourResponse], summary="Tur ro'yxati")
 async def list_tours(
     page: int = Query(1, ge=1),
-    page_size: int = Query(12, ge=1, le=50),
+    page_size: int = Query(12, ge=1, le=100),
     city: Optional[str] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,

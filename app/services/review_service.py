@@ -1,6 +1,7 @@
 """Review business logic."""
 
-from datetime import date
+import math
+from datetime import date, datetime, timezone
 from typing import List, Optional
 
 from fastapi import HTTPException
@@ -9,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.booking import Booking, BookingStatus
+from app.models.guest_review import GuestReview
 from app.models.review import Review
 from app.models.tour import Tour
 from app.models.user import User, UserRole
@@ -112,4 +114,70 @@ class ReviewService:
             "rating": review.rating,
             "comment": review.comment,
             "created_at": review.created_at.isoformat(),
+            "is_guest": False,
         }
+
+    def _ml_score(self, rating: int, comment: Optional[str], created_at: datetime) -> float:
+        """Weighted ML-inspired ranking: rating + content depth + recency."""
+        now = datetime.now(timezone.utc)
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        age_days = max((now - created_at).days, 0)
+        recency = max(0.0, 1.0 - age_days / 365.0)
+        content = min(len(comment or ""), 300) / 300.0
+        return rating * 0.6 + content * 0.25 + recency * 0.15
+
+    async def create_guest_review(
+        self, company_id: int, guest_name: str, rating: int, comment: Optional[str]
+    ) -> dict:
+        if not (1 <= rating <= 5):
+            raise HTTPException(status_code=400, detail="Baho 1 dan 5 gacha bo'lishi kerak")
+        gr = GuestReview(
+            company_id=company_id,
+            guest_name=guest_name.strip(),
+            rating=rating,
+            comment=comment,
+        )
+        self.db.add(gr)
+        await self.db.commit()
+        await self.db.refresh(gr)
+        return self._guest_to_dict(gr)
+
+    def _guest_to_dict(self, gr: GuestReview) -> dict:
+        return {
+            "id": f"g{gr.id}",
+            "user_name": gr.guest_name,
+            "rating": gr.rating,
+            "comment": gr.comment,
+            "created_at": gr.created_at.isoformat(),
+            "is_guest": True,
+            "tour_title": None,
+        }
+
+    async def list_company_reviews_all(self, company_id: int, limit: int = 50) -> List[dict]:
+        """Merge regular + guest reviews, ML-score and rank them."""
+        reg_result = await self.db.execute(
+            select(Review)
+            .options(selectinload(Review.user), selectinload(Review.tour))
+            .where(Review.company_id == company_id)
+            .order_by(Review.created_at.desc())
+            .limit(limit)
+        )
+        reg_reviews = [self._to_dict(r, r.user) for r in reg_result.scalars().all()]
+
+        guest_result = await self.db.execute(
+            select(GuestReview)
+            .where(GuestReview.company_id == company_id)
+            .order_by(GuestReview.created_at.desc())
+            .limit(limit)
+        )
+        guest_reviews = [self._guest_to_dict(gr) for gr in guest_result.scalars().all()]
+
+        all_reviews = reg_reviews + guest_reviews
+
+        def score(r: dict) -> float:
+            created = datetime.fromisoformat(r["created_at"])
+            return self._ml_score(r["rating"], r.get("comment"), created)
+
+        all_reviews.sort(key=score, reverse=True)
+        return all_reviews[:limit]

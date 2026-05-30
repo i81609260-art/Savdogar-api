@@ -15,6 +15,12 @@ from app.services.review_service import ReviewService
 router = APIRouter(prefix="/api/reviews", tags=["Reviews"])
 
 
+class GuestReviewCreate(BaseModel):
+    guest_name: str = Field(min_length=2, max_length=80)
+    rating: int = Field(ge=1, le=5)
+    comment: Optional[str] = None
+
+
 class ReviewCreate(BaseModel):
     booking_id: int
     rating: int = Field(ge=1, le=5)
@@ -59,6 +65,26 @@ async def company_reviews_public(
     db: AsyncSession = Depends(get_db),
 ) -> List[dict]:
     return await ReviewService(db).list_company_reviews_public(company_id, limit)
+
+
+@router.post("/companies/{company_id}/guest", summary="Mehmon sharhi qo'shish (public)")
+async def create_guest_review(
+    company_id: int,
+    data: GuestReviewCreate,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    return await ReviewService(db).create_guest_review(
+        company_id, data.guest_name, data.rating, data.comment
+    )
+
+
+@router.get("/companies/{company_id}/all", summary="Barcha sharhlar ML tartibda (public)")
+async def company_reviews_all(
+    company_id: int,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+) -> List[dict]:
+    return await ReviewService(db).list_company_reviews_all(company_id, limit)
 
 
 @router.get(
