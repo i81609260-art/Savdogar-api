@@ -24,11 +24,23 @@ def slugify(name: str) -> str:
 
 
 async def unique_slug(name: str, db, exclude_id: int | None = None) -> str:
-    """Generate a unique slug, appending -2, -3, ... if needed."""
-    from sqlalchemy import select
+    """Generate a unique slug, appending -2, -3, ... if needed.
+
+    Falls back to a timestamp-based slug when the slug column doesn't exist yet
+    (e.g. fresh SQLite deployment before startup.py patch has run).
+    """
+    import time
+    from sqlalchemy import select, text
     from app.models.company import Company
 
     base = slugify(name)
+
+    # Guard: if the slug column doesn't exist, return a safe unique value
+    try:
+        await db.execute(text("SELECT slug FROM companies LIMIT 1"))
+    except Exception:
+        return f"{base}-{int(time.time())}"
+
     slug = base
     counter = 2
     while True:

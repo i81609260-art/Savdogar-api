@@ -38,11 +38,39 @@ def get_sqlite_path() -> str | None:
 # ─── Column patch definitions ────────────────────────────────────────────────
 # Each entry: (table_name, column_name, column_definition)
 REQUIRED_COLUMNS = [
-    ("companies", "logo_url", "VARCHAR(500)"),
-    ("companies", "sair_integrated", "BOOLEAN DEFAULT 0"),
-    ("users", "telegram_chat_id", "VARCHAR(50)"),
+    ("companies", "logo_url",       "VARCHAR(500)"),
+    ("companies", "sair_integrated","BOOLEAN DEFAULT 0"),
+    ("companies", "slug",           "VARCHAR(255)"),
+    ("companies", "custom_domain",  "VARCHAR(255)"),
+    ("companies", "company_type",   "VARCHAR(20) DEFAULT 'multi'"),
+    ("users",     "telegram_chat_id","VARCHAR(50)"),
+    ("bookings",  "group_id",       "INTEGER"),
     ("integration_configs", "sair_company_id", "VARCHAR(100)"),
-    ("integration_configs", "sair_api_key", "VARCHAR(255)"),
+    ("integration_configs", "sair_api_key",    "VARCHAR(255)"),
+]
+
+
+# ─── Table patch definitions ──────────────────────────────────────────────────
+# Tables that must exist (created if missing); SQLite-compatible DDL.
+REQUIRED_TABLES = [
+    (
+        "tour_groups",
+        """CREATE TABLE IF NOT EXISTS tour_groups (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            tour_id       INTEGER NOT NULL REFERENCES tours(id),
+            company_id    INTEGER NOT NULL REFERENCES companies(id),
+            departure_date DATE NOT NULL,
+            return_date   DATE NOT NULL,
+            hotel_stars   SMALLINT,
+            price         REAL NOT NULL,
+            total_slots   INTEGER NOT NULL DEFAULT 50,
+            booked_slots  INTEGER NOT NULL DEFAULT 0,
+            notes         TEXT,
+            is_active     BOOLEAN NOT NULL DEFAULT 1,
+            created_at    DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            updated_at    DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+        )""",
+    ),
 ]
 
 
@@ -64,6 +92,21 @@ def patch_sqlite(db_path: str) -> None:
     cur = conn.cursor()
 
     patched = 0
+
+    # ── Create missing tables ────────────────────────────────────────────────
+    for tbl_name, ddl in REQUIRED_TABLES:
+        if not table_exists(cur, tbl_name):
+            try:
+                cur.execute(ddl)
+                conn.commit()
+                print(f"[startup] ✅ Created table '{tbl_name}'")
+                patched += 1
+            except sqlite3.OperationalError as e:
+                print(f"[startup] ⚠️  Could not create '{tbl_name}': {e}")
+        else:
+            print(f"[startup] ✔  Table '{tbl_name}' already exists")
+
+    # ── Add missing columns ──────────────────────────────────────────────────
     for table, col, col_def in REQUIRED_COLUMNS:
         if not table_exists(cur, table):
             print(f"[startup] Table '{table}' does not exist yet — skipping '{col}'")
@@ -81,7 +124,7 @@ def patch_sqlite(db_path: str) -> None:
 
     conn.close()
     if patched:
-        print(f"[startup] Schema patch complete — {patched} column(s) added.")
+        print(f"[startup] Schema patch complete — {patched} change(s) applied.")
     else:
         print("[startup] Schema is up-to-date — no changes needed.")
 
