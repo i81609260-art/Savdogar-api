@@ -20,6 +20,7 @@ class CompanyResponse(BaseModel):
     status: CompanyStatus
     rejection_reason: Optional[str]
     logo_url: Optional[str] = None
+    sair_integrated: Optional[bool] = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
