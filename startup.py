@@ -39,6 +39,7 @@ def get_sqlite_path() -> str | None:
 # Each entry: (table_name, column_name, column_definition)
 REQUIRED_COLUMNS = [
     ("companies", "logo_url", "VARCHAR(500)"),
+    ("companies", "sair_integrated", "BOOLEAN DEFAULT 0"),
     ("users", "telegram_chat_id", "VARCHAR(50)"),
     ("integration_configs", "sair_company_id", "VARCHAR(100)"),
     ("integration_configs", "sair_api_key", "VARCHAR(255)"),

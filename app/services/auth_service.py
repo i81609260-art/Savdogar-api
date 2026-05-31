@@ -50,6 +50,7 @@ class AuthService:
             phone=data.company_phone,
             email=data.company_email,
             logo_url=data.company_logo_url,
+            sair_integrated=bool(data.sair_integrated),
             status=CompanyStatus.APPROVED,
         )
         self.db.add(company)

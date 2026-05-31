@@ -63,6 +63,13 @@ class User(Base):
             return self.company.status.value
         return None
 
+    @property
+    def company_sair_integrated(self) -> Optional[bool]:
+        """Get SAIR integration status of the associated company."""
+        if "company" in self.__dict__ and self.company:
+            return bool(self.company.sair_integrated)
+        return False
+
 
 class RefreshTokenBlacklist(Base):
     """Blacklisted refresh tokens after logout."""

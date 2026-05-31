@@ -15,6 +15,7 @@ class RegisterRequest(BaseModel):
     company_phone: str = Field(..., min_length=9)
     company_email: EmailStr
     company_logo_url: Optional[str] = None
+    sair_integrated: Optional[bool] = False
     admin_email: EmailStr
     admin_password: str = Field(..., min_length=8)
     admin_full_name: str = Field(..., min_length=2)
@@ -61,6 +62,7 @@ class UserResponse(BaseModel):
     role: UserRole
     company_id: Optional[int]
     company_status: Optional[str] = None
+    company_sair_integrated: Optional[bool] = False
     model_config = {"from_attributes": True}
 
 

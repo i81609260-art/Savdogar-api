@@ -30,12 +30,11 @@ def _get_sio(request: Request):
     "",
     response_model=BookingResponse,
     summary="Bron qilish",
-    dependencies=[Depends(role_required(UserRole.USER))],
 )
 async def create_booking(
     data: BookingCreate,
     request: Request,
-    current_user: User = Depends(role_required(UserRole.USER)),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> BookingResponse:
     """User creates a pending booking."""
