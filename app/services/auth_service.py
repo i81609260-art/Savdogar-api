@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.company import Company, CompanyStatus
 from app.models.user import RefreshTokenBlacklist, User, UserRole
+from app.utils.slug import unique_slug
 from app.schemas.auth import (
     AuthResponse,
     LoginRequest,
@@ -45,6 +46,7 @@ class AuthService:
 
         company = Company(
             name=data.company_name,
+            slug=await unique_slug(data.company_name, self.db),
             description=data.company_description,
             city=data.company_city,
             phone=data.company_phone,

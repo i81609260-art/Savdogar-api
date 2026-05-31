@@ -11,6 +11,7 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.tour import Tour
+    from app.models.tour_group import TourGroup
     from app.models.user import User
 
 
@@ -30,6 +31,7 @@ class Booking(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     tour_id: Mapped[int] = mapped_column(ForeignKey("tours.id"), index=True)
+    group_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tour_groups.id"), nullable=True, index=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     status: Mapped[BookingStatus] = mapped_column(
         Enum(BookingStatus), default=BookingStatus.PENDING
@@ -47,3 +49,4 @@ class Booking(Base):
 
     user: Mapped["User"] = relationship("User", back_populates="bookings")
     tour: Mapped["Tour"] = relationship("Tour", back_populates="bookings")
+    group: Mapped[Optional["TourGroup"]] = relationship("TourGroup", back_populates="bookings")

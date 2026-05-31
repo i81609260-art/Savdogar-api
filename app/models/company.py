@@ -22,6 +22,13 @@ class CompanyStatus(str, enum.Enum):
     REJECTED = "rejected"
 
 
+class CompanyType(str, enum.Enum):
+    """Business model type — drives which UI is shown on the public page."""
+
+    MULTI = "multi"              # Many distinct tour packages (Turkiya, Dubay, Misr…)
+    SINGLE_DIRECTION = "single_direction"  # One direction, many departure dates (Umra, Haj…)
+
+
 class Company(Base):
     """Tour agency company registered on SAIR."""
 
@@ -29,6 +36,8 @@ class Company(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), index=True)
+    slug: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True, index=True)
+    custom_domain: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     city: Mapped[str] = mapped_column(String(100))
     phone: Mapped[str] = mapped_column(String(50))
@@ -39,6 +48,9 @@ class Company(Base):
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     logo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     sair_integrated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=True)
+    company_type: Mapped[CompanyType] = mapped_column(
+        Enum(CompanyType), default=CompanyType.MULTI, nullable=True
+    )
     owner_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("users.id"), nullable=True
     )

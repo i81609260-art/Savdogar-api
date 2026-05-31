@@ -11,6 +11,7 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.booking import Booking
     from app.models.company import Company
+    from app.models.tour_group import TourGroup
 
 
 class Tour(Base):
@@ -40,3 +41,4 @@ class Tour(Base):
 
     company: Mapped["Company"] = relationship("Company", back_populates="tours")
     bookings: Mapped[list["Booking"]] = relationship("Booking", back_populates="tour")
+    groups: Mapped[list["TourGroup"]] = relationship("TourGroup", back_populates="tour")

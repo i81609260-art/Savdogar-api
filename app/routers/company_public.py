@@ -21,6 +21,23 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "im
 MAX_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
+@router.get("/by-slug/{slug}", response_model=CompanyResponse, summary="Slug orqali kompaniya profili")
+async def get_company_by_slug(
+    slug: str,
+    db: AsyncSession = Depends(get_db),
+) -> CompanyResponse:
+    """Kompaniyani slug yoki custom_domain orqali topish. Auth talab qilinmaydi."""
+    result = await db.execute(
+        select(Company).where(
+            (Company.slug == slug) | (Company.custom_domain == slug)
+        )
+    )
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Kompaniya topilmadi")
+    return CompanyResponse.model_validate(company)
+
+
 @router.get("/{company_id}", response_model=CompanyResponse, summary="Kompaniya public profili")
 async def get_company_public(
     company_id: int,

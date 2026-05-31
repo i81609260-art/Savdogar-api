@@ -10,9 +10,10 @@ from app.models.integration import (
     IntegrationStatus,
     PosSaleNotification,
 )
-from app.models.company import Company, CompanyStatus
+from app.models.company import Company, CompanyStatus, CompanyType
 from app.models.notification import Notification
 from app.models.tour import Tour
+from app.models.tour_group import TourGroup
 from app.models.user import RefreshTokenBlacklist, User, UserRole
 
 __all__ = [
@@ -27,8 +28,10 @@ __all__ = [
     "PosSaleNotification",
     "Company",
     "CompanyStatus",
+    "CompanyType",
     "Notification",
     "Tour",
+    "TourGroup",
     "RefreshTokenBlacklist",
     "User",
     "UserRole",

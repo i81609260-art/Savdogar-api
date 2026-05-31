@@ -13,6 +13,7 @@ from app.models.booking import Booking
 from app.models.company import Company, CompanyStatus
 from app.models.review import Review
 from app.models.tour import Tour
+from app.utils.slug import unique_slug
 from app.models.user import User, UserRole
 from app.schemas.auth import SuperAdminUserResponse, UserResponse
 from app.schemas.company import CompanyDetailResponse, CompanyResponse
@@ -292,6 +293,7 @@ class SuperAdminService:
     async def create_company(self, data: dict) -> CompanyDetailResponse:
         company = Company(
             name=data["name"],
+            slug=await unique_slug(data["name"], self.db),
             description=data.get("description"),
             city=data["city"],
             phone=data["phone"],
