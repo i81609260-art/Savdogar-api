@@ -42,6 +42,15 @@ async def lifespan(app: FastAPI):
         os.makedirs(settings.data_dir, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Safely add any missing columns for existing databases
+        for stmt in [
+            "ALTER TABLE companies ADD COLUMN sair_integrated BOOLEAN DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN telegram_chat_id VARCHAR(50)",
+        ]:
+            try:
+                await conn.execute(__import__("sqlalchemy").text(stmt))
+            except Exception:
+                pass  # Column already exists
     await seed_superadmin()
     yield
 
