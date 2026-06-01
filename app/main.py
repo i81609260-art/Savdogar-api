@@ -93,10 +93,10 @@ app = FastAPI(
 # Starlette CORSMiddleware handles ALL responses including errors/exceptions
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-Access-Token", "X-Sayr-Signature"],
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 os.makedirs(settings.upload_dir, exist_ok=True)
