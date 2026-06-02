@@ -90,11 +90,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Starlette CORSMiddleware handles ALL responses including errors/exceptions
+# allow_origins=["*"] + allow_credentials=False — tokens are sent via
+# Authorization header (not cookies), so wildcard origin is safe here.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origin_list,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
