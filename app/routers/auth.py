@@ -1,6 +1,6 @@
 """Authentication API routes."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -17,6 +17,7 @@ from app.schemas.auth import (
     UserResponse,
 )
 from app.services.auth_service import AuthService
+from app.utils.limiter import limiter
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
@@ -26,7 +27,7 @@ async def register_company(
     data: RegisterRequest,
     db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
-    """Register tour company and auto-login."""
+    """Register tour company — status starts as PENDING until superadmin approval."""
     service = AuthService(db)
     return await service.register_company(data)
 
@@ -42,11 +43,13 @@ async def register_user(
 
 
 @router.post("/login", response_model=AuthResponse, summary="Tizimga kirish")
+@limiter.limit("10/minute")
 async def login(
+    request: Request,
     data: LoginRequest,
     db: AsyncSession = Depends(get_db),
 ) -> AuthResponse:
-    """Login and receive JWT tokens."""
+    """Login and receive JWT tokens. Rate-limited to 10 attempts per minute per IP."""
     service = AuthService(db)
     return await service.login(data)
 
@@ -56,7 +59,7 @@ async def refresh(
     data: RefreshRequest,
     db: AsyncSession = Depends(get_db),
 ) -> TokenResponse:
-    """Refresh access token using refresh token."""
+    """Refresh access token — old refresh token is blacklisted."""
     service = AuthService(db)
     return await service.refresh_token(data.refresh_token)
 

@@ -67,9 +67,11 @@ async def chat(
         email=company.email,
     )
 
-    # Re-index if tours changed (simple cache invalidation by count)
+    # Re-index if tours changed — compare by frozenset of IDs to catch add+remove same count
     cached = ml_chat._tour_data.get(company_id)
-    if cached is None or len(cached) != len(ml_tours):
+    cached_ids = frozenset(t.id for t in cached) if cached is not None else None
+    current_ids = frozenset(t.id for t in ml_tours)
+    if cached_ids != current_ids:
         ml_chat.index_company_tours(company_id, ml_tours)
 
     intent = ml_chat._detect_intent(body.message)

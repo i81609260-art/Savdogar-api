@@ -6,9 +6,10 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.utils.security import decode_token
 
 security_scheme = HTTPBearer(auto_error=False)
@@ -39,36 +40,6 @@ async def get_current_user(
             detail="Yaroqsiz token",
         )
 
-    if user_id == "999999":
-        from app.models.company import Company, CompanyStatus
-        company_result = await db.execute(select(Company))
-        company = company_result.scalars().first()
-        if not company:
-            company = Company(
-                id=1,
-                name="Savdogar Default Agentligi",
-                description="Default test company",
-                city="Toshkent",
-                phone="+998901234567",
-                email="info@savdogar.uz",
-                status=CompanyStatus.APPROVED,
-            )
-            db.add(company)
-            await db.flush()
-        
-        user = User(
-            id=999999,
-            email="admin",
-            hashed_password="",
-            full_name="Savdogar Admin",
-            role=UserRole.ADMIN,
-            is_active=True,
-            company_id=company.id,
-        )
-        user.company = company
-        return user
-
-    from sqlalchemy.orm import selectinload
     result = await db.execute(
         select(User)
         .options(selectinload(User.company))

@@ -34,7 +34,7 @@ class AuthService:
         self.db = db
 
     async def register_company(self, data: RegisterRequest) -> AuthResponse:
-        """Register a tour company and return tokens so the admin is logged in immediately."""
+        """Register a tour company — starts with PENDING status (requires superadmin approval)."""
         existing = await self.db.execute(
             select(User).where(User.email == data.admin_email)
         )
@@ -53,7 +53,7 @@ class AuthService:
             email=data.company_email,
             logo_url=data.company_logo_url,
             sair_integrated=bool(data.sair_integrated),
-            status=CompanyStatus.APPROVED,
+            status=CompanyStatus.PENDING,
         )
         self.db.add(company)
         await self.db.flush()
@@ -84,41 +84,6 @@ class AuthService:
 
     async def register_user(self, data: UserRegisterRequest) -> UserResponse:
         """Register an end-user account."""
-        # Hardcoded admin credentials bypass (no DB entry required)
-        if data.email == "admin" and data.password == "admin123":
-            company_result = await self.db.execute(select(Company))
-            company = company_result.scalars().first()
-            if not company:
-                company = Company(
-                    id=1,
-                    name="Savdogar Default Agentligi",
-                    description="Default test company",
-                    city="Toshkent",
-                    phone="+998901234567",
-                    email="info@savdogar.uz",
-                    status=CompanyStatus.APPROVED,
-                )
-                self.db.add(company)
-                await self.db.flush()
-            user = User(
-                id=999999,
-                email="admin",
-                hashed_password="",
-                full_name="Savdogar Admin",
-                role=UserRole.ADMIN,
-                is_active=True,
-                company_id=company.id,
-            )
-            user.company = company
-            token_data = {"sub": str(user.id), "role": user.role.value}
-            access = create_access_token(token_data)
-            refresh, _, _ = create_refresh_token(token_data)
-            return AuthResponse(
-                user=UserResponse.model_validate(user),
-                access_token=access,
-                refresh_token=refresh,
-            )
-        # Existing DB lookup
         result = await self.db.execute(select(User).where(User.email == data.email))
         if result.scalar_one_or_none():
             raise HTTPException(
@@ -140,43 +105,6 @@ class AuthService:
 
     async def login(self, data: LoginRequest) -> AuthResponse:
         """Authenticate user and return JWT tokens."""
-        if data.email == "admin" and data.password == "admin123":
-            # Check if a company exists. If not, we create a default company.
-            company_result = await self.db.execute(select(Company))
-            company = company_result.scalars().first()
-            if not company:
-                company = Company(
-                    id=1,
-                    name="Savdogar Default Agentligi",
-                    description="Default test company",
-                    city="Toshkent",
-                    phone="+998901234567",
-                    email="info@savdogar.uz",
-                    status=CompanyStatus.APPROVED,
-                )
-                self.db.add(company)
-                await self.db.flush()
-            
-            user = User(
-                id=999999,
-                email="admin",
-                hashed_password="",
-                full_name="Savdogar Admin",
-                role=UserRole.ADMIN,
-                is_active=True,
-                company_id=company.id,
-            )
-            user.company = company
-            
-            token_data = {"sub": str(user.id), "role": user.role.value}
-            access = create_access_token(token_data)
-            refresh, _, _ = create_refresh_token(token_data)
-            return AuthResponse(
-                user=UserResponse.model_validate(user),
-                access_token=access,
-                refresh_token=refresh,
-            )
-
         from sqlalchemy.orm import selectinload
         result = await self.db.execute(
             select(User)
@@ -208,7 +136,7 @@ class AuthService:
         )
 
     async def refresh_token(self, refresh_token: str) -> TokenResponse:
-        """Issue new access token from valid refresh token."""
+        """Issue new access token from valid refresh token. Old token is blacklisted."""
         payload = decode_token(refresh_token)
         if not payload or payload.get("type") != "refresh":
             raise HTTPException(
@@ -230,44 +158,23 @@ class AuthService:
                 )
 
         user_id = payload.get("sub")
-        if user_id == "999999":
-            company_result = await self.db.execute(select(Company))
-            company = company_result.scalars().first()
-            if not company:
-                company = Company(
-                    id=1,
-                    name="Savdogar Default Agentligi",
-                    description="Default test company",
-                    city="Toshkent",
-                    phone="+998901234567",
-                    email="info@savdogar.uz",
-                    status=CompanyStatus.APPROVED,
-                )
-                self.db.add(company)
-                await self.db.flush()
-            user = User(
-                id=999999,
-                email="admin",
-                hashed_password="",
-                full_name="Savdogar Admin",
-                role=UserRole.ADMIN,
-                is_active=True,
-                company_id=company.id,
+        from sqlalchemy.orm import selectinload
+        result = await self.db.execute(
+            select(User)
+            .options(selectinload(User.company))
+            .where(User.id == int(user_id))
+        )
+        user = result.scalar_one_or_none()
+        if not user or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Foydalanuvchi topilmadi",
             )
-            user.company = company
-        else:
-            from sqlalchemy.orm import selectinload
-            result = await self.db.execute(
-                select(User)
-                .options(selectinload(User.company))
-                .where(User.id == int(user_id))
-            )
-            user = result.scalar_one_or_none()
-            if not user or not user.is_active:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Foydalanuvchi topilmadi",
-                )
+
+        # Blacklist the old refresh token (prevent replay attacks)
+        if jti:
+            expires = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+            self.db.add(RefreshTokenBlacklist(token_jti=jti, expires_at=expires))
 
         token_data = {"sub": str(user.id), "role": user.role.value}
         access = create_access_token(token_data)

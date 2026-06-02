@@ -11,6 +11,7 @@ from app.models.booking import Booking, BookingStatus
 from app.models.user import User, UserRole
 from app.schemas.booking import BookingResponse
 from app.schemas.crm import CustomerResponse
+from app.utils.pagination import PaginatedResponse, paginate
 
 
 class CRMService:
@@ -20,16 +21,18 @@ class CRMService:
         """Initialize with database session."""
         self.db = db
 
-    def _segment(self, confirmed_count: int) -> str:
-        """Determine customer segment from booking count."""
-        if confirmed_count >= 3:
+    def _segment(self, confirmed_count: int, total_spent: float) -> str:
+        """Determine customer segment by booking count and spend."""
+        if confirmed_count >= 5 or total_spent >= 1000:
             return "vip"
         if confirmed_count >= 1:
             return "returning"
         return "new"
 
-    async def list_customers(self, user: User) -> List[CustomerResponse]:
-        """List all customers who booked with the company."""
+    async def list_customers(
+        self, user: User, page: int = 1, page_size: int = 20
+    ) -> PaginatedResponse[CustomerResponse]:
+        """List all customers who booked with the company (paginated)."""
         if not user.company_id:
             raise HTTPException(status_code=403, detail="Kompaniyaga biriktirilmagansiz")
 
@@ -37,15 +40,25 @@ class CRMService:
             select(Booking.user_id)
             .where(Booking.company_id == user.company_id)
             .distinct()
+            .subquery()
         )
+
+        count_q = select(func.count(User.id)).where(
+            User.id.in_(select(subq)), User.role == UserRole.USER
+        )
+        total = (await self.db.execute(count_q)).scalar() or 0
+
         result = await self.db.execute(
-            select(User).where(User.id.in_(subq), User.role == UserRole.USER)
+            select(User)
+            .where(User.id.in_(select(subq)), User.role == UserRole.USER)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
         users = result.scalars().all()
         customers = []
         for u in users:
             customers.append(await self._build_customer(u.id, user.company_id))
-        return customers
+        return paginate(customers, total, page, page_size)
 
     async def get_customer(
         self, user: User, customer_id: int, include_bookings: bool = True
@@ -111,7 +124,7 @@ class CRMService:
             total_bookings=len(bookings),
             confirmed_bookings=len(confirmed),
             total_spent=total_spent,
-            segment=self._segment(len(confirmed)),
+            segment=self._segment(len(confirmed), total_spent),
             last_booking_at=last_booking,
             bookings=booking_responses,
         )

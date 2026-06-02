@@ -49,10 +49,8 @@ class ReportsService:
 
     async def _dashboard_stats(self, company_id: int) -> DashboardStats:
         """Calculate dashboard KPIs."""
-        today = date.today()
-        today_start = datetime.combine(today, datetime.min.time()).replace(
-            tzinfo=timezone.utc
-        )
+        today = datetime.now(timezone.utc).date()
+        today_start = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
 
         today_bookings_q = await self.db.execute(
             select(func.count(Booking.id)).where(
@@ -140,7 +138,8 @@ class ReportsService:
             buckets[key].revenue += b.total_price
             buckets[key].bookings_count += 1
 
-        return sorted(buckets.values(), key=lambda x: x.period)
+        # Sort by ISO bucket key (e.g. "2025-01"), not by display period string
+        return [v for _, v in sorted(buckets.items())]
 
     async def _top_tours(self, company_id: int, limit: int = 5) -> List[TopTourItem]:
         """Top selling tours by confirmed bookings."""

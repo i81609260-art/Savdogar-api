@@ -7,9 +7,12 @@ import socketio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
 from app.database import Base, engine
+from app.utils.limiter import limiter
 from app.routers import (
     admin,
     auth,
@@ -31,10 +34,13 @@ settings = get_settings()
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
-    cors_allowed_origins="*",
+    cors_allowed_origins=settings.socket_cors_list,
 )
 
 socket_app = socketio.ASGIApp(sio, socketio_path="")
+
+# sid → {user_id, role, company_id} for room access control
+_sid_auth: dict[str, dict] = {}
 
 
 @asynccontextmanager
@@ -44,7 +50,6 @@ async def lifespan(app: FastAPI):
         os.makedirs(settings.data_dir, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Safely add any missing columns for existing databases
         for stmt in [
             "ALTER TABLE companies ADD COLUMN sair_integrated BOOLEAN DEFAULT 0",
             "ALTER TABLE users ADD COLUMN telegram_chat_id VARCHAR(50)",
@@ -52,7 +57,7 @@ async def lifespan(app: FastAPI):
             try:
                 await conn.execute(__import__("sqlalchemy").text(stmt))
             except Exception:
-                pass  # Column already exists
+                pass
     await seed_superadmin()
     yield
 
@@ -86,15 +91,16 @@ async def seed_superadmin():
 app = FastAPI(
     title=settings.app_name,
     description="Savdogar — CRM/POS tizimi, SAIR tur platformasi bilan API integratsiya",
-    version="1.1.0",
+    version="1.2.0",
     lifespan=lifespan,
 )
 
-# allow_origins=["*"] + allow_credentials=False — tokens are sent via
-# Authorization header (not cookies), so wildcard origin is safe here.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -140,22 +146,51 @@ async def health():
 
 @sio.event
 async def connect(sid, environ, auth):
-    """Handle Socket.io client connection."""
-    print(f"Client connected: {sid}")
+    """Validate JWT token before allowing Socket.io connection."""
+    from app.utils.security import decode_token
+
+    token = auth.get("token") if isinstance(auth, dict) else None
+    if not token:
+        return False
+
+    payload = decode_token(token)
+    if not payload or payload.get("type") != "access":
+        return False
+
+    _sid_auth[sid] = {
+        "user_id": str(payload.get("sub")),
+        "role": payload.get("role", ""),
+        "company_id": payload.get("company_id"),
+    }
 
 
 @sio.event
 async def disconnect(sid):
-    """Handle Socket.io disconnect."""
-    print(f"Client disconnected: {sid}")
+    """Clean up auth state on disconnect."""
+    _sid_auth.pop(sid, None)
 
 
 @sio.event
 async def join_room(sid, data):
-    """Join user or company room for targeted notifications."""
+    """Join user or company room — validates that the requester owns the room."""
+    user_info = _sid_auth.get(sid)
+    if not user_info:
+        return
+
     room = data.get("room")
-    if room:
-        await sio.enter_room(sid, room)
+    if not room:
+        return
+
+    if room.startswith("user_"):
+        # Users can only join their own room
+        if room != f"user_{user_info['user_id']}":
+            return
+    elif room.startswith("company_"):
+        # Only staff roles can join company rooms
+        if user_info["role"] not in ("admin", "superadmin", "operator"):
+            return
+
+    await sio.enter_room(sid, room)
 
 
 # Mount Socket.io at /socket.io

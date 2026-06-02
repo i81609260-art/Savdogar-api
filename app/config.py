@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "Savdogar"
-    debug: bool = True
+    debug: bool = False
     secret_key: str = "dev-secret-key-change-in-production-min-32"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30

@@ -44,10 +44,12 @@ class BookingService:
 
     async def create_booking(self, user: User, data: BookingCreate) -> BookingResponse:
         """User creates a pending booking."""
+        # with_for_update() prevents race conditions when multiple users book simultaneously
         result = await self.db.execute(
             select(Tour)
             .options(selectinload(Tour.company))
             .where(Tour.id == data.tour_id, Tour.is_active == True)  # noqa: E712
+            .with_for_update()
         )
         tour = result.scalar_one_or_none()
         if not tour:
@@ -114,7 +116,7 @@ class BookingService:
 
         if data.status == BookingStatus.CONFIRMED and old_status == BookingStatus.PENDING:
             tour_result = await self.db.execute(
-                select(Tour).where(Tour.id == booking.tour_id)
+                select(Tour).where(Tour.id == booking.tour_id).with_for_update()
             )
             tour = tour_result.scalar_one()
             if tour.available_slots < booking.guests_count:
@@ -123,7 +125,7 @@ class BookingService:
 
         if data.status == BookingStatus.CANCELLED and old_status == BookingStatus.CONFIRMED:
             tour_result = await self.db.execute(
-                select(Tour).where(Tour.id == booking.tour_id)
+                select(Tour).where(Tour.id == booking.tour_id).with_for_update()
             )
             tour = tour_result.scalar_one()
             tour.available_slots += booking.guests_count

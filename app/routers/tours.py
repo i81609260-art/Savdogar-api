@@ -6,7 +6,7 @@ from datetime import date
 from typing import Optional
 
 import aiofiles
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -19,6 +19,34 @@ from app.utils.pagination import PaginatedResponse
 
 router = APIRouter(prefix="/api/tours", tags=["Tours"])
 settings = get_settings()
+
+_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+_MAX_BYTES = settings.max_upload_size_mb * 1024 * 1024
+
+
+def _validate_image(content: bytes, filename: str) -> str:
+    """Return safe extension or raise 400."""
+    ext = os.path.splitext(filename)[1].lower()
+    if ext not in _ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Faqat rasm fayllari qabul qilinadi: {', '.join(_ALLOWED_EXTENSIONS)}",
+        )
+    if len(content) > _MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Fayl hajmi {settings.max_upload_size_mb}MB dan oshmasligi kerak",
+        )
+    # Validate magic bytes to prevent disguised executables
+    magic_ok = (
+        content[:3] == b"\xff\xd8\xff"  # JPEG
+        or content[:8] == b"\x89PNG\r\n\x1a\n"  # PNG
+        or content[:6] in (b"GIF87a", b"GIF89a")  # GIF
+        or (content[:4] == b"RIFF" and content[8:12] == b"WEBP")  # WebP
+    )
+    if not magic_ok:
+        raise HTTPException(status_code=400, detail="Yaroqsiz rasm formati")
+    return ext
 
 
 @router.get("", response_model=PaginatedResponse[TourResponse], summary="Tur ro'yxati")
@@ -119,14 +147,15 @@ async def upload_tour_image(
     current_user: User = Depends(role_required(UserRole.ADMIN)),
     db: AsyncSession = Depends(get_db),
 ) -> TourResponse:
-    """Upload tour cover image."""
+    """Upload tour cover image — validates type, size, and magic bytes."""
+    content = await file.read()
+    ext = _validate_image(content, file.filename or "unknown.jpg")
+
     os.makedirs(settings.upload_dir, exist_ok=True)
-    ext = os.path.splitext(file.filename or "")[1] or ".jpg"
     filename = f"{uuid.uuid4()}{ext}"
     filepath = os.path.join(settings.upload_dir, filename)
 
     async with aiofiles.open(filepath, "wb") as f:
-        content = await file.read()
         await f.write(content)
 
     image_url = f"/uploads/{filename}"
