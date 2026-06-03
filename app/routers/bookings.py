@@ -111,13 +111,13 @@ async def download_voucher(
     "/{booking_id}/status",
     response_model=BookingResponse,
     summary="Bron statusini o'zgartirish",
-    dependencies=[Depends(role_required(UserRole.ADMIN, UserRole.SUPERADMIN))],
+    dependencies=[Depends(role_required(UserRole.ADMIN, UserRole.OPERATOR, UserRole.SUPERADMIN))],
 )
 async def update_booking_status(
     booking_id: int,
     data: BookingStatusUpdate,
     request: Request,
-    current_user: User = Depends(role_required(UserRole.ADMIN, UserRole.SUPERADMIN)),
+    current_user: User = Depends(role_required(UserRole.ADMIN, UserRole.OPERATOR, UserRole.SUPERADMIN)),
     db: AsyncSession = Depends(get_db),
 ) -> BookingResponse:
     """Admin confirms or cancels booking."""
