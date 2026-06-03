@@ -165,6 +165,21 @@ async def _send(token: str, chat_id, text: str, reply_markup=None) -> None:
     await _tg(token, "sendMessage", **payload)
 
 
+async def _send_photo(token: str, chat_id, photo_url: str, caption: str, reply_markup=None) -> None:
+    payload: dict = {
+        "chat_id": chat_id,
+        "photo": photo_url,
+        "caption": caption,
+        "parse_mode": "HTML",
+    }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    result = await _tg(token, "sendPhoto", **payload)
+    # If photo failed (bad URL etc.), fall back to text
+    if not result.get("ok"):
+        await _send(token, chat_id, caption, reply_markup)
+
+
 async def _handle_company_update(token: str, company_id: int, update: dict, db: AsyncSession) -> None:
     from sqlalchemy import select
     from app.models.company import Company
@@ -189,13 +204,18 @@ async def _handle_company_update(token: str, company_id: int, update: dict, db: 
 
     # Route commands/text
     if text in ("/start", "/boshlash"):
-        await _send(
-            token, chat_id,
+        welcome = (
             f"👋 <b>{company.name}</b> botiga xush kelibsiz!\n\n"
             f"📍 {company.city}\n"
-            f"Quyidagi menyu orqali biz bilan tanishing:",
-            reply_markup=MAIN_KEYBOARD,
         )
+        if company.description:
+            welcome += f"\n{company.description}\n"
+        welcome += "\nQuyidagi menyu orqali biz bilan tanishing 👇"
+
+        if company.logo_url:
+            await _send_photo(token, chat_id, company.logo_url, welcome, reply_markup=MAIN_KEYBOARD)
+        else:
+            await _send(token, chat_id, welcome, reply_markup=MAIN_KEYBOARD)
 
     elif text in ("🗺 Turlar", "/turlar"):
         res = await db.execute(
