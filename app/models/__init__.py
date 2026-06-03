@@ -11,6 +11,7 @@ from app.models.integration import (
     PosSaleNotification,
 )
 from app.models.company import Company, CompanyStatus, CompanyType
+from app.models.company_telegram_bot import CompanyTelegramBot
 from app.models.notification import Notification
 from app.models.tour import Tour
 from app.models.tour_group import TourGroup
@@ -29,6 +30,7 @@ __all__ = [
     "Company",
     "CompanyStatus",
     "CompanyType",
+    "CompanyTelegramBot",
     "Notification",
     "Tour",
     "TourGroup",

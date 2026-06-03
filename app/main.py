@@ -29,6 +29,8 @@ from app.routers import company_public
 from app.routers import chat as chat_router
 from app.routers.tour_groups import public_router as tour_groups_public_router
 from app.routers.tour_groups import admin_router as tour_groups_admin_router
+from app.routers.company_bot import admin_router as company_bot_admin_router
+from app.routers.company_bot import webhook_router as company_bot_webhook_router
 
 settings = get_settings()
 
@@ -61,6 +63,15 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE bookings ADD COLUMN group_id INTEGER",
             "ALTER TABLE integration_configs ADD COLUMN sair_company_id VARCHAR(100)",
             "ALTER TABLE integration_configs ADD COLUMN sair_api_key VARCHAR(255)",
+            """CREATE TABLE IF NOT EXISTS company_telegram_bots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id INTEGER NOT NULL UNIQUE REFERENCES companies(id),
+                bot_token VARCHAR(255) NOT NULL UNIQUE,
+                bot_username VARCHAR(100),
+                webhook_set BOOLEAN NOT NULL DEFAULT 0,
+                is_active BOOLEAN NOT NULL DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+            )""",
         ]:
             try:
                 await conn.execute(__import__("sqlalchemy").text(stmt))
@@ -133,6 +144,8 @@ app.include_router(company_public.router)
 app.include_router(chat_router.router)
 app.include_router(tour_groups_public_router)
 app.include_router(tour_groups_admin_router)
+app.include_router(company_bot_admin_router)
+app.include_router(company_bot_webhook_router)
 
 app.state.sio = sio
 
