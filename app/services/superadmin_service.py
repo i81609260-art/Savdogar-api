@@ -255,6 +255,9 @@ class SuperAdminService:
             raise HTTPException(status_code=404, detail="Foydalanuvchi topilmadi")
         if user.role == UserRole.SUPERADMIN:
             raise HTTPException(status_code=403, detail="Superadmin o'chirib bo'lmaydi")
+        # Delete related notifications first to avoid NOT NULL constraint
+        from app.models.notification import Notification
+        await self.db.execute(sa_delete(Notification).where(Notification.user_id == user_id))
         await self.db.delete(user)
         await self.db.commit()
 
