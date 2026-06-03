@@ -100,10 +100,7 @@ class BookingService:
         if not booking:
             raise HTTPException(status_code=404, detail="Bron topilmadi")
 
-        if user.role == UserRole.OPERATOR:
-            raise HTTPException(status_code=403, detail="Operator status o'zgartira olmaydi")
-
-        if user.role in (UserRole.ADMIN,) and booking.company_id != user.company_id:
+        if user.role in (UserRole.ADMIN, UserRole.OPERATOR) and booking.company_id != user.company_id:
             raise HTTPException(status_code=403, detail="Bu bron sizga tegishli emas")
 
         if booking.status != BookingStatus.PENDING and user.role != UserRole.SUPERADMIN:
@@ -134,6 +131,7 @@ class BookingService:
             await WaitlistService(self.db, self.notifier.sio).notify_first(booking.tour_id)
 
         await self.db.flush()
+        await self.db.refresh(booking)  # reload updated_at from DB
 
         status_labels = {
             BookingStatus.CONFIRMED: "tasdiqlandi",
