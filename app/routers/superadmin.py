@@ -148,6 +148,34 @@ async def all_users(
     return await service.list_all_users()
 
 
+@router.get(
+    "/users/{user_id}",
+    response_model=SuperAdminUserResponse,
+    summary="Foydalanuvchi ma'lumotlari",
+    dependencies=[Depends(role_required(UserRole.SUPERADMIN))],
+)
+async def get_user_detail(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> SuperAdminUserResponse:
+    """Bitta foydalanuvchi — email, rol, kompaniya, faollik holati."""
+    from app.schemas.auth import SuperAdminUserResponse as Response
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Foydalanuvchi topilmadi")
+    return Response(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        phone=user.phone,
+        role=user.role.value,
+        company_id=user.company_id,
+        is_active=user.is_active,
+        created_at=user.created_at,
+    )
+
+
 @router.patch(
     "/users/{user_id}/reset-password",
     summary="Foydalanuvchi parolini o'zgartirish",
