@@ -34,7 +34,7 @@ settings = get_settings()
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
-    cors_allowed_origins=settings.socket_cors_list,
+    cors_allowed_origins="*",
 )
 
 socket_app = socketio.ASGIApp(sio, socketio_path="")
@@ -45,19 +45,27 @@ _sid_auth: dict[str, dict] = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Create tables and seed superadmin on startup."""
+    """Create tables, patch missing columns, and seed superadmin on startup."""
     if settings.data_dir:
         os.makedirs(settings.data_dir, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Safely add any columns/tables introduced after initial deploy
         for stmt in [
             "ALTER TABLE companies ADD COLUMN sair_integrated BOOLEAN DEFAULT 0",
             "ALTER TABLE users ADD COLUMN telegram_chat_id VARCHAR(50)",
+            "ALTER TABLE companies ADD COLUMN logo_url VARCHAR(500)",
+            "ALTER TABLE companies ADD COLUMN slug VARCHAR(255)",
+            "ALTER TABLE companies ADD COLUMN custom_domain VARCHAR(255)",
+            "ALTER TABLE companies ADD COLUMN company_type VARCHAR(20) DEFAULT 'multi'",
+            "ALTER TABLE bookings ADD COLUMN group_id INTEGER",
+            "ALTER TABLE integration_configs ADD COLUMN sair_company_id VARCHAR(100)",
+            "ALTER TABLE integration_configs ADD COLUMN sair_api_key VARCHAR(255)",
         ]:
             try:
                 await conn.execute(__import__("sqlalchemy").text(stmt))
             except Exception:
-                pass
+                pass  # Column already exists — ignore
     await seed_superadmin()
     yield
 
@@ -100,7 +108,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origin_list,
+    allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
