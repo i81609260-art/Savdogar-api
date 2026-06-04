@@ -255,9 +255,10 @@ class SuperAdminService:
             raise HTTPException(status_code=404, detail="Foydalanuvchi topilmadi")
         if user.role == UserRole.SUPERADMIN:
             raise HTTPException(status_code=403, detail="Superadmin o'chirib bo'lmaydi")
-        # Delete related notifications first to avoid NOT NULL constraint
+        # Delete related records to avoid NOT NULL constraints
         from app.models.notification import Notification
         await self.db.execute(sa_delete(Notification).where(Notification.user_id == user_id))
+        await self.db.execute(sa_delete(Booking).where(Booking.user_id == user_id))
         await self.db.delete(user)
         await self.db.commit()
 
@@ -304,6 +305,21 @@ class SuperAdminService:
             status=CompanyStatus.APPROVED,
         )
         self.db.add(company)
+        await self.db.flush()
+
+        # Auto-create admin user for company
+        from app.utils.security import hash_password
+        default_password = "CompanyAdmin123!"
+        admin_user = User(
+            email=data["email"],
+            hashed_password=hash_password(default_password),
+            full_name=f"{data['name']} Admin",
+            phone=data.get("phone"),
+            role=UserRole.ADMIN,
+            company_id=company.id,
+            is_active=True,
+        )
+        self.db.add(admin_user)
         await self.db.commit()
         await self.db.refresh(company)
         return await self.get_company_detail(company.id)
