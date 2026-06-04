@@ -77,6 +77,35 @@ async def list_tours(
     )
 
 
+@router.get("/top", response_model=list[TourResponse], summary="Eng yaxshi turlar")
+async def get_top_tours(
+    limit: int = Query(6, ge=1, le=20),
+    db: AsyncSession = Depends(get_db),
+) -> list[TourResponse]:
+    """Get top rated tours."""
+    from sqlalchemy import func, select
+    from app.models.tour import Tour
+    from app.models.review import Review
+
+    # Get top tours by average rating
+    subquery = select(
+        Review.tour_id,
+        func.avg(Review.rating).label("avg_rating"),
+        func.count(Review.id).label("review_count"),
+    ).group_by(Review.tour_id).subquery()
+
+    result = await db.execute(
+        select(Tour)
+        .outerjoin(subquery, Tour.id == subquery.c.tour_id)
+        .where(Tour.is_active == True)  # noqa: E712
+        .order_by(subquery.c.avg_rating.desc().nulls_last())
+        .limit(limit)
+    )
+    tours = result.scalars().all()
+    service = TourService(db)
+    return [await service._to_response(t) for t in tours]
+
+
 @router.get("/{tour_id}", response_model=TourResponse, summary="Tur tafsilotlari")
 async def get_tour(
     tour_id: int,
