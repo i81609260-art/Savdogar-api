@@ -63,6 +63,8 @@ class UserResponse(BaseModel):
     company_id: Optional[int]
     company_status: Optional[str] = None
     company_sair_integrated: Optional[bool] = False
+    click_merchant_id: Optional[str] = None
+    payme_merchant_id: Optional[str] = None
     model_config = {"from_attributes": True}
 
 
@@ -92,4 +94,13 @@ class AuthResponse(BaseModel):
 class PushSubscriptionRequest(BaseModel):
     """Browser push subscription JSON."""
     subscription: str
+    model_config = {"extra": "allow"}
+
+
+class PaymentSettingsUpdate(BaseModel):
+    """Update user payment settings."""
+    click_merchant_id: Optional[str] = None
+    click_merchant_key: Optional[str] = None
+    payme_merchant_id: Optional[str] = None
+    payme_api_key: Optional[str] = None
     model_config = {"extra": "allow"}

@@ -41,6 +41,10 @@ class User(Base):
     )
     push_subscription: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     telegram_chat_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    click_merchant_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    click_merchant_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    payme_merchant_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    payme_api_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

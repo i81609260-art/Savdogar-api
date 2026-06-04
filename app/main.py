@@ -20,6 +20,7 @@ from app.routers import (
     crm,
     integrations,
     notifications,
+    payments,
     reports,
     superadmin,
     tours,
@@ -141,6 +142,7 @@ app.include_router(integrations.router)
 app.include_router(waitlist.router)
 app.include_router(reviews.router)
 app.include_router(upload.router)
+app.include_router(payments.router)
 app.include_router(telegram_router.router)
 app.include_router(company_public.router)
 app.include_router(chat_router.router)

@@ -9,6 +9,7 @@ from app.models.user import User
 from app.schemas.auth import (
     AuthResponse,
     LoginRequest,
+    PaymentSettingsUpdate,
     PushSubscriptionRequest,
     RefreshRequest,
     RegisterRequest,
@@ -83,3 +84,24 @@ async def push_subscribe(
     """Save browser push subscription."""
     service = AuthService(db)
     return await service.save_push_subscription(current_user, data.subscription)
+
+
+@router.patch("/payment-settings", response_model=UserResponse, summary="To'lov sozlamalari")
+async def update_payment_settings(
+    data: PaymentSettingsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UserResponse:
+    """Update user Click/Payme merchant credentials."""
+    if data.click_merchant_id:
+        current_user.click_merchant_id = data.click_merchant_id
+    if data.click_merchant_key:
+        current_user.click_merchant_key = data.click_merchant_key
+    if data.payme_merchant_id:
+        current_user.payme_merchant_id = data.payme_merchant_id
+    if data.payme_api_key:
+        current_user.payme_api_key = data.payme_api_key
+    db.add(current_user)
+    await db.commit()
+    await db.refresh(current_user)
+    return UserResponse.model_validate(current_user)
