@@ -131,7 +131,7 @@ class BookingService:
             await WaitlistService(self.db, self.notifier.sio).notify_first(booking.tour_id)
 
         await self.db.flush()
-        await self.db.refresh(booking, ["user", "tour"])  # reload with relationships
+        await self.db.refresh(booking)  # reload all attributes and relationships
 
         status_labels = {
             BookingStatus.CONFIRMED: "tasdiqlandi",
