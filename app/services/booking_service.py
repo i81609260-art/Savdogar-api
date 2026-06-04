@@ -36,6 +36,7 @@ class BookingService:
             status=booking.status,
             guests_count=booking.guests_count,
             total_price=booking.total_price,
+            phone=booking.phone,
             notes=booking.notes,
             cancel_reason=booking.cancel_reason,
             created_at=booking.created_at,
@@ -65,6 +66,7 @@ class BookingService:
             status=BookingStatus.PENDING,
             guests_count=data.guests_count,
             total_price=total_price,
+            phone=data.phone,
             notes=data.notes,
         )
         self.db.add(booking)

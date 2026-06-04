@@ -38,6 +38,7 @@ class Booking(Base):
     )
     guests_count: Mapped[int] = mapped_column(Integer, default=1)
     total_price: Mapped[float] = mapped_column(Float)
+    phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     cancel_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

@@ -13,6 +13,7 @@ class BookingCreate(BaseModel):
 
     tour_id: int
     guests_count: int = Field(default=1, ge=1)
+    phone: str = Field(..., min_length=1)
     notes: Optional[str] = None
 
 
@@ -36,6 +37,7 @@ class BookingResponse(BaseModel):
     status: BookingStatus
     guests_count: int
     total_price: float
+    phone: Optional[str] = None
     notes: Optional[str]
     cancel_reason: Optional[str]
     created_at: datetime
