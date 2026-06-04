@@ -23,6 +23,7 @@ from app.routers import (
     reports,
     superadmin,
     tours,
+    upload,
 )
 from app.routers import waitlist, reviews, telegram as telegram_router
 from app.routers import company_public
@@ -139,6 +140,7 @@ app.include_router(notifications.router)
 app.include_router(integrations.router)
 app.include_router(waitlist.router)
 app.include_router(reviews.router)
+app.include_router(upload.router)
 app.include_router(telegram_router.router)
 app.include_router(company_public.router)
 app.include_router(chat_router.router)
