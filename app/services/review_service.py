@@ -91,7 +91,8 @@ class ReviewService:
         return [self._to_dict(r, r.user) for r in reviews]
 
     async def list_admin_reviews(self, user: User) -> List[dict]:
-        """Admin sees reviews for their company."""
+        """Admin sees reviews (regular + guest) for their company."""
+        # Regular reviews
         query = (
             select(Review)
             .options(selectinload(Review.user), selectinload(Review.tour))
@@ -101,8 +102,20 @@ class ReviewService:
             query = query.where(Review.company_id == user.company_id)
 
         result = await self.db.execute(query)
-        reviews = result.scalars().all()
-        return [self._to_dict(r, r.user) for r in reviews]
+        reviews = [self._to_dict(r, r.user) for r in result.scalars().all()]
+
+        # Guest reviews
+        guest_query = select(GuestReview).order_by(GuestReview.created_at.desc())
+        if user.role in (UserRole.ADMIN, UserRole.OPERATOR):
+            guest_query = guest_query.where(GuestReview.company_id == user.company_id)
+
+        guest_result = await self.db.execute(guest_query)
+        guest_reviews = [self._guest_to_dict(gr) for gr in guest_result.scalars().all()]
+
+        # Combine and sort by date
+        all_reviews = reviews + guest_reviews
+        all_reviews.sort(key=lambda r: r["created_at"], reverse=True)
+        return all_reviews
 
     def _to_dict(self, review: Review, user) -> dict:
         return {
