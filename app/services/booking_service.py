@@ -1,5 +1,6 @@
 """Booking business logic."""
 
+import asyncio
 from typing import List, Optional
 
 from fastapi import HTTPException, status
@@ -11,6 +12,7 @@ from app.models.booking import Booking, BookingStatus
 from app.models.tour import Tour
 from app.models.user import User, UserRole
 from app.schemas.booking import BookingCreate, BookingResponse, BookingStatusUpdate
+from app.services.email_service import EmailService
 from app.services.notification_service import NotificationService
 from app.utils.pagination import PaginatedResponse, paginate
 
@@ -22,6 +24,7 @@ class BookingService:
         """Initialize with database session and optional Socket.io."""
         self.db = db
         self.notifier = NotificationService(db, sio)
+        self.email_service = EmailService()
 
     def _to_response(self, booking: Booking) -> BookingResponse:
         """Map booking ORM to response."""
@@ -80,6 +83,26 @@ class BookingService:
             "booking",
             f"/bookings",
         )
+
+        # Send confirmation email (background)
+        asyncio.create_task(
+            self.email_service.send_booking_confirmation(
+                user.email,
+                user.full_name,
+                tour.title,
+                total_price,
+                booking.id,
+            )
+        )
+
+        # Send Telegram notification if user has chat_id
+        if user.telegram_chat_id:
+            asyncio.create_task(
+                self.notifier.send_telegram_notification(
+                    user.telegram_chat_id,
+                    f"✅ Bron qabul qilindi!\n\n{tour.title}\n💰 {total_price:,.0f} so'm\n\nID: {booking.id}",
+                )
+            )
 
         result = await self.db.execute(
             select(Booking)
@@ -156,6 +179,30 @@ class BookingService:
                 {"booking_id": booking.id, "status": data.status.value},
                 room=f"company_{booking.company_id}",
             )
+
+        # Send status update email (background)
+        if booking_user:
+            asyncio.create_task(
+                self.email_service.send_booking_status_update(
+                    booking_user.email,
+                    booking_user.full_name,
+                    booking.tour.title if booking.tour else "Tour",
+                    data.status.value,
+                    data.cancel_reason,
+                )
+            )
+
+            # Send Telegram notification if user has chat_id
+            if booking_user.telegram_chat_id:
+                status_emoji = {"confirmed": "✅", "cancelled": "❌", "pending": "⏳"}.get(
+                    data.status.value, ""
+                )
+                message = f"{status_emoji} Bron {label}\n\n{booking.tour.title if booking.tour else 'Tour'}"
+                if data.cancel_reason:
+                    message += f"\n\nSababi: {data.cancel_reason}"
+                asyncio.create_task(
+                    self.notifier.send_telegram_notification(booking_user.telegram_chat_id, message)
+                )
 
         return self._to_response(booking)
 

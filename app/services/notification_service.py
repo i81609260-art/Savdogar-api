@@ -1,12 +1,16 @@
 """Notification creation and delivery service."""
 
+import aiohttp
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.models.notification import Notification
 from app.models.user import User
 from app.utils.push_notify import send_web_push
+
+settings = get_settings()
 
 
 class NotificationService:
@@ -86,3 +90,21 @@ class NotificationService:
         for member in staff:
             if member.role in allowed:
                 await self.create_and_send(member, title, message, notif_type, link)
+
+    async def send_telegram_notification(self, chat_id: str, message: str) -> bool:
+        """Send message via Telegram bot."""
+        if not settings.telegram_bot_token:
+            return False
+
+        url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage"
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(
+                    url,
+                    json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"},
+                    timeout=aiohttp.ClientTimeout(total=5),
+                ) as resp:
+                    return resp.status == 200
+            except Exception as e:
+                print(f"[TELEGRAM] Error: {e}")
+                return False

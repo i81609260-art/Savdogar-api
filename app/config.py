@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     vapid_private_key: str = ""
     vapid_claims_email: str = "mailto:admin@sayr.uz"
 
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = "noreply@savdogar.uz"
+
     socket_cors_origins: str = (
         "http://localhost:3000,"
         "https://savdogar-sable.vercel.app,"
