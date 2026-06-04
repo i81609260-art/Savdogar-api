@@ -59,6 +59,10 @@ async def lifespan(app: FastAPI):
         for stmt in [
             "ALTER TABLE companies ADD COLUMN sair_integrated BOOLEAN DEFAULT 0",
             "ALTER TABLE users ADD COLUMN telegram_chat_id VARCHAR(50)",
+            "ALTER TABLE users ADD COLUMN click_merchant_id VARCHAR(100)",
+            "ALTER TABLE users ADD COLUMN click_merchant_key VARCHAR(100)",
+            "ALTER TABLE users ADD COLUMN payme_merchant_id VARCHAR(100)",
+            "ALTER TABLE users ADD COLUMN payme_api_key VARCHAR(255)",
             "ALTER TABLE companies ADD COLUMN logo_url VARCHAR(500)",
             "ALTER TABLE companies ADD COLUMN slug VARCHAR(255)",
             "ALTER TABLE companies ADD COLUMN custom_domain VARCHAR(255)",
