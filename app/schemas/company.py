@@ -43,6 +43,8 @@ class CompanyDetailResponse(BaseModel):
     rejection_reason: Optional[str]
     logo_url: Optional[str] = None
     owner_id: Optional[int]
+    company_info: Optional[str] = None
+    website_customization: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     users_count: Optional[int] = 0
@@ -56,3 +58,21 @@ class CompanyRejectRequest(BaseModel):
     """Reject company application."""
 
     reason: str
+
+
+class CompanyInfoUpdate(BaseModel):
+    """Update company information for AI context."""
+    company_info: str
+
+
+class WebsiteCustomizationRequest(BaseModel):
+    """Website customization instruction."""
+    instruction: str
+
+
+class WebsiteCustomizationResponse(BaseModel):
+    """Website customization response."""
+    success: bool
+    message: str
+    changes: dict = {}
+    preview_url: Optional[str] = None

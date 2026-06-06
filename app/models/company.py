@@ -54,6 +54,8 @@ class Company(Base):
     owner_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("users.id"), nullable=True
     )
+    company_info: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    website_customization: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

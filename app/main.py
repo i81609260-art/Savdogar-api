@@ -26,6 +26,7 @@ from app.routers import (
     superadmin,
     tours,
     upload,
+    company_settings,
 )
 from app.routers import waitlist, reviews, telegram as telegram_router
 from app.routers import company_public
@@ -69,6 +70,8 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE companies ADD COLUMN company_type VARCHAR(20) DEFAULT 'multi'",
             "ALTER TABLE bookings ADD COLUMN phone VARCHAR(20)",
             "ALTER TABLE bookings ADD COLUMN group_id INTEGER",
+            "ALTER TABLE companies ADD COLUMN company_info TEXT",
+            "ALTER TABLE companies ADD COLUMN website_customization TEXT",
             "ALTER TABLE integration_configs ADD COLUMN sair_company_id VARCHAR(100)",
             "ALTER TABLE integration_configs ADD COLUMN sair_api_key VARCHAR(255)",
             """CREATE TABLE IF NOT EXISTS company_telegram_bots (
@@ -150,6 +153,7 @@ app.include_router(reviews.router)
 app.include_router(upload.router)
 app.include_router(payments.router)
 app.include_router(promo.router)
+app.include_router(company_settings.router)
 app.include_router(telegram_router.router)
 app.include_router(company_public.router)
 app.include_router(chat_router.router)
