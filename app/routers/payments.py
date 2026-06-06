@@ -89,15 +89,31 @@ async def init_payme_payment(
     if not booking:
         raise HTTPException(status_code=404, detail="Bron topilmadi")
 
+    # Fetch tour to verify company
     result = await db.execute(
-        select(User).where(User.id == booking.user_id)
+        select(Booking.user_id).where(Booking.id == data.booking_id)
+    )
+    tour_owner_id = result.scalar_one_or_none()
+
+    result = await db.execute(
+        select(User).where(User.id == tour_owner_id)
     )
     tour_owner = result.scalar_one_or_none()
     if not tour_owner or not tour_owner.payme_merchant_id:
         raise HTTPException(status_code=400, detail="Tour egasi Payme to'lovni qabul qilmaydi")
 
-    # TODO: Payme API ga so'rov yuborish
-    payment_url = f"https://checkout.paycom.uz/?merchant={tour_owner.payme_merchant_id}&amount={int(data.amount * 100)}"
+    # Amount in tiyn (1 USD = 12,500 UZS approximately, stored as tiyn in Payme)
+    amount_tiyn = int(data.amount * 100)  # Convert to cents for Payme
+
+    # Create Payme checkout URL with proper parameters
+    payment_url = (
+        f"https://checkout.paycom.uz/"
+        f"?account[user_id]={current_user.id}"
+        f"&account[booking_id]={booking.id}"
+        f"&merchant_id={tour_owner.payme_merchant_id}"
+        f"&amount={amount_tiyn}"
+        f"&return_url=https://savdogar.vercel.app/my-bookings"
+    )
 
     return PaymentResponse(
         success=True,
