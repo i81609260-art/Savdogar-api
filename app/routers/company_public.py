@@ -38,6 +38,32 @@ async def get_company_by_slug(
     return CompanyResponse.model_validate(company)
 
 
+@router.get("/{slug}/customization", summary="Website customization by slug")
+async def get_website_customization_by_slug(
+    slug: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get website customization for a company by slug — no auth required."""
+    result = await db.execute(
+        select(Company).where(
+            (Company.slug == slug) | (Company.custom_domain == slug)
+        )
+    )
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Kompaniya topilmadi")
+
+    customization = {}
+    if company.website_customization:
+        import json
+        try:
+            customization = json.loads(company.website_customization)
+        except:
+            pass
+
+    return {"customization": customization}
+
+
 @router.get("/{company_id}", response_model=CompanyResponse, summary="Kompaniya public profili")
 async def get_company_public(
     company_id: int,
