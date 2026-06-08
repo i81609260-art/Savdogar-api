@@ -1,16 +1,26 @@
 """WebSocket handler for real-time tour request updates."""
 
 import json
-from typing import Dict, Set
+from typing import Dict, Set, Optional
 
 from fastapi import WebSocketException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal
-from app.main import sio, _sid_auth
 from app.models.request import TourRequest
 from app.utils.security import decode_token
+
+# These will be set at runtime to avoid circular imports
+sio: Optional[object] = None
+_sid_auth: Optional[dict] = None
+
+
+def set_socket_io(socket_io, sid_auth):
+    """Initialize socket.io and auth dict."""
+    global sio, _sid_auth
+    sio = socket_io
+    _sid_auth = sid_auth
 
 
 @sio.event

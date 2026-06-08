@@ -36,7 +36,6 @@ from app.routers.tour_groups import public_router as tour_groups_public_router
 from app.routers.tour_groups import admin_router as tour_groups_admin_router
 from app.routers.company_bot import admin_router as company_bot_admin_router
 from app.routers.company_bot import webhook_router as company_bot_webhook_router
-from app.routers import requests_ws  # WebSocket handlers
 from app.routers import tour_creator, telegram_miniapp, analytics, booking_payments
 
 settings = get_settings()
@@ -50,6 +49,10 @@ socket_app = socketio.ASGIApp(sio, socketio_path="")
 
 # sid → {user_id, role, company_id} for room access control
 _sid_auth: dict[str, dict] = {}
+
+# Initialize WebSocket handlers (delayed to avoid circular imports)
+from app.routers import requests_ws
+requests_ws.set_socket_io(sio, _sid_auth)
 
 
 @asynccontextmanager
