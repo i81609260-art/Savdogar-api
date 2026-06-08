@@ -27,6 +27,7 @@ from app.routers import (
     tours,
     upload,
     company_settings,
+    requests as requests_router,
 )
 from app.routers import waitlist, reviews, telegram as telegram_router
 from app.routers import company_public
@@ -83,6 +84,27 @@ async def lifespan(app: FastAPI):
                 webhook_set BOOLEAN NOT NULL DEFAULT 0,
                 is_active BOOLEAN NOT NULL DEFAULT 1,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+            )""",
+            """CREATE TABLE IF NOT EXISTS tour_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id INTEGER NOT NULL REFERENCES companies(id),
+                lead_name VARCHAR(255) NOT NULL,
+                lead_phone VARCHAR(20) NOT NULL,
+                lead_email VARCHAR(255) NOT NULL,
+                destination VARCHAR(100),
+                group_type VARCHAR(50),
+                group_size INTEGER,
+                start_date VARCHAR(10),
+                end_date VARCHAR(10),
+                hotel_rating VARCHAR(10),
+                meal_plan VARCHAR(50),
+                tour_type VARCHAR(50),
+                budget FLOAT,
+                status VARCHAR(50) NOT NULL DEFAULT 'Yangi',
+                notes TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                FOREIGN KEY(company_id) REFERENCES companies(id)
             )""",
         ]:
             try:
@@ -145,6 +167,7 @@ app.include_router(auth.router)
 app.include_router(tours.router)
 app.include_router(bookings.router)
 app.include_router(crm.router)
+app.include_router(requests_router.router)
 app.include_router(reports.router)
 app.include_router(admin.router)
 app.include_router(superadmin.router)

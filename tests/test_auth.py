@@ -11,7 +11,6 @@ async def test_health(client: AsyncClient):
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
 
-
 @pytest.mark.asyncio
 async def test_admin_login(client: AsyncClient):
     """Admin can login with credentials."""
