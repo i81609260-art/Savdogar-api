@@ -1,7 +1,8 @@
 """Per-company Telegram bot endpoints: connect, disconnect, status, webhook."""
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Body
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +18,11 @@ admin_router = APIRouter(prefix="/api/admin/telegram", tags=["Company Telegram B
 webhook_router = APIRouter(prefix="/api/telegram", tags=["Telegram Webhooks"])
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/{method}"
+
+
+class BotTokenRequest(BaseModel):
+    """Request model for bot token."""
+    bot_token: str
 
 
 async def _tg(token: str, method: str, **kwargs) -> dict:
@@ -48,11 +54,11 @@ async def bot_status(
 
 @admin_router.post("/connect", summary="Bot tokenini ulash")
 async def connect_bot(
-    payload: dict,
+    payload: BotTokenRequest,
     current_user: User = Depends(role_required(UserRole.ADMIN, UserRole.OPERATOR)),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    token = (payload.get("bot_token") or "").strip()
+    token = (payload.bot_token or "").strip()
     if not token:
         raise HTTPException(status_code=400, detail="bot_token majburiy")
 
