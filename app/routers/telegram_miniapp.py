@@ -1,5 +1,6 @@
 """Telegram WebApp mini app for tour booking."""
 
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
