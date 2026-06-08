@@ -36,6 +36,7 @@ from app.routers.tour_groups import public_router as tour_groups_public_router
 from app.routers.tour_groups import admin_router as tour_groups_admin_router
 from app.routers.company_bot import admin_router as company_bot_admin_router
 from app.routers.company_bot import webhook_router as company_bot_webhook_router
+from app.routers import requests_ws  # WebSocket handlers
 
 settings = get_settings()
 

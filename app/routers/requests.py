@@ -11,6 +11,7 @@ from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.middleware.role_guard import role_required
 from app.models.user import User, UserRole
+from app.services.pricing_calculator import PricingCalculator
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/requests", tags=["Tour Requests"])
@@ -212,6 +213,7 @@ async def update_request_status(
 ) -> dict:
     """So'rov statusini yangilash."""
     from app.models.request import TourRequest
+    from app.routers.requests_ws import broadcast_request_status_update
 
     if not current_user.company_id:
         raise HTTPException(status_code=400, detail="Kompaniya topilmadi")
@@ -231,6 +233,14 @@ async def update_request_status(
 
     request.status = data.status
     await db.commit()
+
+    # Broadcast status update via WebSocket
+    await broadcast_request_status_update(
+        request_id=request.id,
+        company_id=request.company_id,
+        new_status=request.status,
+        updated_by_user_id=current_user.id,
+    )
 
     return {"id": request.id, "status": request.status}
 
@@ -286,3 +296,27 @@ async def update_request(
     await db.commit()
 
     return {"id": request.id, "updated": True}
+
+
+@router.post("/calculate-price", summary="Tur narxini hisoblash")
+async def calculate_tour_price(
+    destination: Optional[str] = None,
+    group_size: Optional[int] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    hotel_rating: Optional[str] = None,
+    meal_plan: Optional[str] = None,
+    tour_type: Optional[str] = None,
+    budget: Optional[float] = None,
+) -> dict:
+    """Tur so'roviga asosan narxni hisoblash."""
+    return PricingCalculator.calculate_price(
+        destination=destination,
+        group_size=group_size,
+        start_date=start_date,
+        end_date=end_date,
+        hotel_rating=hotel_rating,
+        meal_plan=meal_plan,
+        tour_type=tour_type,
+        budget=budget,
+    )
