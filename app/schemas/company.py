@@ -24,6 +24,8 @@ class CompanyResponse(BaseModel):
     rejection_reason: Optional[str]
     logo_url: Optional[str] = None
     sair_integrated: Optional[bool] = False
+    click_merchant_id: Optional[str] = None
+    payme_merchant_id: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

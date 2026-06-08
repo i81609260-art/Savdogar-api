@@ -7,6 +7,7 @@ import aiofiles
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import get_settings
 from app.database import get_db
@@ -26,16 +27,24 @@ async def get_company_by_slug(
     slug: str,
     db: AsyncSession = Depends(get_db),
 ) -> CompanyResponse:
-    """Kompaniyani slug yoki custom_domain orqali topish. Auth talab qilinmaydi."""
+    """Kompaniyani slug yoki custom_domain orqali topish. Auth talab qilinmaydi. Includes owner's payment credentials."""
     result = await db.execute(
-        select(Company).where(
+        select(Company)
+        .options(selectinload(Company.owner))
+        .where(
             (Company.slug == slug) | (Company.custom_domain == slug)
         )
     )
     company = result.scalar_one_or_none()
     if not company:
         raise HTTPException(status_code=404, detail="Kompaniya topilmadi")
-    return CompanyResponse.model_validate(company)
+
+    # Create response with owner's payment credentials
+    response_dict = CompanyResponse.model_validate(company).model_dump()
+    if company.owner:
+        response_dict["click_merchant_id"] = company.owner.click_merchant_id
+        response_dict["payme_merchant_id"] = company.owner.payme_merchant_id
+    return response_dict
 
 
 @router.get("/{slug}/customization", summary="Website customization by slug")
@@ -69,12 +78,22 @@ async def get_company_public(
     company_id: int,
     db: AsyncSession = Depends(get_db),
 ) -> CompanyResponse:
-    """Public company info — no auth required."""
-    result = await db.execute(select(Company).where(Company.id == company_id))
+    """Public company info — no auth required. Includes owner's payment credentials."""
+    result = await db.execute(
+        select(Company)
+        .options(selectinload(Company.owner))
+        .where(Company.id == company_id)
+    )
     company = result.scalar_one_or_none()
     if not company:
         raise HTTPException(status_code=404, detail="Kompaniya topilmadi")
-    return CompanyResponse.model_validate(company)
+
+    # Create response with owner's payment credentials
+    response_dict = CompanyResponse.model_validate(company).model_dump()
+    if company.owner:
+        response_dict["click_merchant_id"] = company.owner.click_merchant_id
+        response_dict["payme_merchant_id"] = company.owner.payme_merchant_id
+    return response_dict
 
 
 @router.post("/upload-logo", summary="Logotip rasmini yuklash (public)")
