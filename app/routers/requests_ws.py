@@ -22,47 +22,46 @@ def set_socket_io(socket_io, sid_auth):
     sio = socket_io
     _sid_auth = sid_auth
 
-
-@sio.event
-async def request_join_room(sid, data):
-    """Join request update room."""
-    user_info = _sid_auth.get(sid)
-    if not user_info:
-        return False
-
-    request_id = data.get("request_id")
-    if not request_id:
-        return False
-
-    room = f"request_{request_id}"
-
-    async with AsyncSessionLocal() as db:
-        result = await db.execute(
-            select(TourRequest).where(TourRequest.id == request_id)
-        )
-        request = result.scalar_one_or_none()
-
-        if not request:
+    # Register handlers after sio is initialized
+    @socket_io.event
+    async def request_join_room(sid, data):
+        """Join request update room."""
+        user_info = _sid_auth.get(sid)
+        if not user_info:
             return False
 
-        if request.company_id != user_info.get("company_id"):
+        request_id = data.get("request_id")
+        if not request_id:
             return False
 
-    await sio.enter_room(sid, room)
-    await sio.emit(
-        "request_joined",
-        {"request_id": request_id, "status": "joined"},
-        room=room,
-    )
-
-
-@sio.event
-async def request_leave_room(sid, data):
-    """Leave request update room."""
-    request_id = data.get("request_id")
-    if request_id:
         room = f"request_{request_id}"
-        await sio.leave_room(sid, room)
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(TourRequest).where(TourRequest.id == request_id)
+            )
+            request = result.scalar_one_or_none()
+
+            if not request:
+                return False
+
+            if request.company_id != user_info.get("company_id"):
+                return False
+
+        await socket_io.enter_room(sid, room)
+        await socket_io.emit(
+            "request_joined",
+            {"request_id": request_id, "status": "joined"},
+            room=room,
+        )
+
+    @socket_io.event
+    async def request_leave_room(sid, data):
+        """Leave request update room."""
+        request_id = data.get("request_id")
+        if request_id:
+            room = f"request_{request_id}"
+            await socket_io.leave_room(sid, room)
 
 
 async def broadcast_request_status_update(
