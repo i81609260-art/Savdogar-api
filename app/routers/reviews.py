@@ -87,6 +87,29 @@ async def company_reviews_all(
     return await ReviewService(db).list_company_reviews_all(company_id, limit)
 
 
+@router.get("/by-slug/{slug}", summary="Slug boyicha sharhlar (saytda ko'rsatish uchun)")
+async def reviews_by_slug(
+    slug: str,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+) -> List[dict]:
+    """Get all reviews for a company by slug - for displaying on /sites/{slug} page."""
+    from sqlalchemy import select
+    from app.models.company import Company
+    from app.models.review import Review
+
+    # Get company by slug
+    result = await db.execute(
+        select(Company).where(Company.slug == slug)
+    )
+    company = result.scalar_one_or_none()
+    if not company:
+        return []
+
+    # Get reviews for this company
+    return await ReviewService(db).list_company_reviews_all(company.id, limit)
+
+
 @router.get(
     "/admin",
     summary="Admin uchun sharhlar ro'yxati",

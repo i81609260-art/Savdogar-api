@@ -72,6 +72,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE bookings ADD COLUMN group_id INTEGER",
             "ALTER TABLE companies ADD COLUMN company_info TEXT",
             "ALTER TABLE companies ADD COLUMN website_customization TEXT",
+            "ALTER TABLE reviews ADD COLUMN company_id INTEGER REFERENCES companies(id)",
             "ALTER TABLE integration_configs ADD COLUMN sair_company_id VARCHAR(100)",
             "ALTER TABLE integration_configs ADD COLUMN sair_api_key VARCHAR(255)",
             """CREATE TABLE IF NOT EXISTS company_telegram_bots (
