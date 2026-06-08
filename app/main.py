@@ -36,7 +36,16 @@ from app.routers.tour_groups import public_router as tour_groups_public_router
 from app.routers.tour_groups import admin_router as tour_groups_admin_router
 from app.routers.company_bot import admin_router as company_bot_admin_router
 from app.routers.company_bot import webhook_router as company_bot_webhook_router
-from app.routers import tour_creator, telegram_miniapp, analytics, booking_payments
+from app.routers import (
+    tour_creator,
+    telegram_miniapp,
+    analytics,
+    booking_payments,
+    ai_bot,
+    advanced_analytics,
+    localization,
+    white_label,
+)
 
 settings = get_settings()
 
@@ -195,6 +204,10 @@ app.include_router(tour_creator.router)
 app.include_router(telegram_miniapp.router)
 app.include_router(analytics.router)
 app.include_router(booking_payments.router)
+app.include_router(ai_bot.router)
+app.include_router(advanced_analytics.router)
+app.include_router(localization.router)
+app.include_router(white_label.router)
 
 app.state.sio = sio
 
