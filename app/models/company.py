@@ -63,6 +63,9 @@ class Company(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    owner: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[owner_id], viewonly=True
+    )
     users: Mapped[list["User"]] = relationship(
         "User", back_populates="company", foreign_keys="User.company_id"
     )
