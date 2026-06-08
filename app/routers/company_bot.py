@@ -63,24 +63,32 @@ async def connect_bot(
 
     username = me["result"].get("username", "")
 
+    # Check if token is already used by another company
+    existing = await db.execute(
+        select(CompanyTelegramBot).where(
+            (CompanyTelegramBot.bot_token == token) &
+            (CompanyTelegramBot.company_id != current_user.company_id)
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Bu bot token boshqa kompaniya tomonidan ishlatilmoqda")
+
     # Upsert
     result = await db.execute(
         select(CompanyTelegramBot).where(CompanyTelegramBot.company_id == current_user.company_id)
     )
     bot = result.scalar_one_or_none()
     if bot:
-        bot.bot_token = token
-        bot.bot_username = username
-        bot.webhook_set = False
-        bot.is_active = True
-    else:
-        bot = CompanyTelegramBot(
-            company_id=current_user.company_id,
-            bot_token=token,
-            bot_username=username,
-        )
-        db.add(bot)
+        # If updating, delete old record first to avoid UNIQUE constraint
+        await db.delete(bot)
+        await db.flush()
 
+    bot = CompanyTelegramBot(
+        company_id=current_user.company_id,
+        bot_token=token,
+        bot_username=username,
+    )
+    db.add(bot)
     await db.flush()
 
     # Set webhook
