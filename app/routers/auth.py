@@ -75,6 +75,14 @@ async def logout(
     return await service.logout(data.refresh_token)
 
 
+@router.get("/user", response_model=UserResponse, summary="Joriy foydalanuvchi ma'lumotlari")
+async def get_current_user_info(
+    current_user: User = Depends(get_current_user),
+) -> UserResponse:
+    """Get current logged-in user information."""
+    return UserResponse.model_validate(current_user)
+
+
 @router.post("/push-subscribe", summary="Push obuna")
 async def push_subscribe(
     data: PushSubscriptionRequest,
