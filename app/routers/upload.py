@@ -57,9 +57,10 @@ async def upload_image(file: UploadFile = File(...)) -> UploadResponse:
     content = await file.read()
     ext = _validate_image(content, file.filename or "unknown.jpg")
 
-    os.makedirs(settings.upload_dir, exist_ok=True)
+    upload_path = settings.persistent_upload_dir
+    os.makedirs(upload_path, exist_ok=True)
     filename = f"{uuid.uuid4()}{ext}"
-    filepath = os.path.join(settings.upload_dir, filename)
+    filepath = os.path.join(upload_path, filename)
 
     async with aiofiles.open(filepath, "wb") as f:
         await f.write(content)

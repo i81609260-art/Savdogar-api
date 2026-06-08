@@ -57,6 +57,13 @@ class Settings(BaseSettings):
     upload_dir: str = "uploads"
     max_upload_size_mb: int = 5
 
+    @property
+    def persistent_upload_dir(self) -> str:
+        """Use persistent volume for uploads if available, otherwise use default."""
+        if self.data_dir:
+            return f"{self.data_dir}/uploads"
+        return self.upload_dir
+
     vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_claims_email: str = "mailto:admin@sayr.uz"

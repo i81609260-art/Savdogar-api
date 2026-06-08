@@ -137,8 +137,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-os.makedirs(settings.upload_dir, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
+upload_path = settings.persistent_upload_dir
+os.makedirs(upload_path, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=upload_path), name="uploads")
 
 app.include_router(auth.router)
 app.include_router(tours.router)
