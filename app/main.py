@@ -37,6 +37,7 @@ from app.routers.tour_groups import admin_router as tour_groups_admin_router
 from app.routers.company_bot import admin_router as company_bot_admin_router
 from app.routers.company_bot import webhook_router as company_bot_webhook_router
 from app.routers import requests_ws  # WebSocket handlers
+from app.routers import tour_creator, telegram_miniapp, analytics, booking_payments
 
 settings = get_settings()
 
@@ -187,6 +188,10 @@ app.include_router(tour_groups_public_router)
 app.include_router(tour_groups_admin_router)
 app.include_router(company_bot_admin_router)
 app.include_router(company_bot_webhook_router)
+app.include_router(tour_creator.router)
+app.include_router(telegram_miniapp.router)
+app.include_router(analytics.router)
+app.include_router(booking_payments.router)
 
 app.state.sio = sio
 
