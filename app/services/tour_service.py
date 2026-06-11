@@ -38,6 +38,7 @@ class TourService:
             end_date=tour.end_date,
             available_slots=tour.available_slots,
             image_url=tour.image_url,
+            booking_type=tour.booking_type or "group",
             is_active=tour.is_active,
             created_at=tour.created_at,
         )
@@ -125,6 +126,7 @@ class TourService:
             start_date=data.start_date,
             end_date=data.end_date,
             available_slots=data.available_slots,
+            booking_type=data.booking_type,
         )
         self.db.add(tour)
         await self.db.flush()

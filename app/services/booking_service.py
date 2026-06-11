@@ -140,10 +140,11 @@ class BookingService:
             tour_result = await self.db.execute(
                 select(Tour).where(Tour.id == booking.tour_id).with_for_update()
             )
-            tour = tour_result.scalar_one()
-            if tour.available_slots < booking.guests_count:
-                raise HTTPException(status_code=400, detail="Yetarli joy yo'q")
-            tour.available_slots -= booking.guests_count
+            tour = tour_result.scalar_one_or_none()
+            if tour is not None:
+                if tour.available_slots < booking.guests_count:
+                    raise HTTPException(status_code=400, detail="Yetarli joy yo'q")
+                tour.available_slots -= booking.guests_count
 
         if data.status == BookingStatus.CANCELLED and old_status == BookingStatus.CONFIRMED:
             tour_result = await self.db.execute(
