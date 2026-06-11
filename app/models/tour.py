@@ -31,6 +31,7 @@ class Tour(Base):
     end_date: Mapped[date] = mapped_column(Date)
     available_slots: Mapped[int] = mapped_column(Integer)
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    booking_type: Mapped[str] = mapped_column(String(20), default="group")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

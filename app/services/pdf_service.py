@@ -13,7 +13,7 @@ class VoucherPDF(FPDF):
         self.set_fill_color(79, 70, 229)  # indigo-600
         self.rect(0, 0, 210, 20, "F")
         self.set_text_color(255, 255, 255)
-        self.cell(0, 12, "SAVDOGAR — Bron Voucheri", align="C", new_x="LMARGIN", new_y="NEXT")
+        self.cell(0, 12, "SAVDOGAR - Bron Voucheri", align="C", new_x="LMARGIN", new_y="NEXT")
         self.set_text_color(0, 0, 0)
         self.ln(4)
 
@@ -63,7 +63,7 @@ def generate_voucher(booking: Booking) -> bytes:
     _row(pdf, "Email:", user_email)
     _row(pdf, "Tur:", tour_title)
     _row(pdf, "Shahar:", city)
-    _row(pdf, "Sana:", f"{start} — {end}")
+    _row(pdf, "Sana:", f"{start} - {end}")
     _row(pdf, "Mehmonlar:", str(booking.guests_count))
     _row(pdf, "Narx:", f"{booking.total_price:,.0f} so'm")
     _row(pdf, "Kompaniya:", company_name)
