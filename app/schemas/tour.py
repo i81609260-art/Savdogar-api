@@ -14,6 +14,7 @@ class TourCreate(BaseModel):
     city: str
     country: str = "Uzbekistan"
     price: float = Field(..., gt=0)
+    currency: str = Field(default="UZS")
     duration_days: int = Field(..., ge=1)
     start_date: date
     end_date: date
@@ -29,6 +30,7 @@ class TourUpdate(BaseModel):
     city: Optional[str] = None
     country: Optional[str] = None
     price: Optional[float] = Field(None, gt=0)
+    currency: Optional[str] = None
     duration_days: Optional[int] = Field(None, ge=1)
     start_date: Optional[date] = None
     end_date: Optional[date] = None
@@ -48,6 +50,7 @@ class TourResponse(BaseModel):
     city: str
     country: str
     price: float
+    currency: str = "UZS"
     duration_days: int
     start_date: date
     end_date: date

@@ -26,6 +26,7 @@ class Tour(Base):
     city: Mapped[str] = mapped_column(String(100), index=True)
     country: Mapped[str] = mapped_column(String(100), default="Uzbekistan")
     price: Mapped[float] = mapped_column(Float)
+    currency: Mapped[str] = mapped_column(String(10), default="UZS")
     duration_days: Mapped[int] = mapped_column(Integer, default=1)
     start_date: Mapped[date] = mapped_column(Date, index=True)
     end_date: Mapped[date] = mapped_column(Date)

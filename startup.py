@@ -48,6 +48,7 @@ REQUIRED_COLUMNS = [
     ("integration_configs", "sair_company_id", "VARCHAR(100)"),
     ("integration_configs", "sair_api_key",    "VARCHAR(255)"),
     ("tours",               "booking_type",    "VARCHAR(20) DEFAULT 'group'"),
+    ("tours",               "currency",        "VARCHAR(10) DEFAULT 'UZS'"),
 ]
 
 
