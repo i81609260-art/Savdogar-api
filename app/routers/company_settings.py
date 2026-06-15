@@ -43,7 +43,7 @@ async def update_company_info(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update company information for AI context."""
+    """Update company information for AI context. Supports template selection with colors."""
     if not current_user.company_id:
         raise HTTPException(status_code=400, detail="Company yo'q")
 
@@ -58,7 +58,7 @@ async def update_company_info(
     await db.merge(company)
     await db.commit()
 
-    return {"success": True, "message": "Kompaniya ma'lumoti saqlandi"}
+    return {"success": True, "message": "Kompaniya ma'lumoti saqlandi", "company_id": current_user.company_id}
 
 
 @router.post("/website/customize", response_model=WebsiteCustomizationResponse, summary="AI website customization")

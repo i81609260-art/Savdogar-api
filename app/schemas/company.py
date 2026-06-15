@@ -23,6 +23,7 @@ class CompanyResponse(BaseModel):
     status: CompanyStatus
     rejection_reason: Optional[str]
     logo_url: Optional[str] = None
+    company_info: Optional[str] = None
     sair_integrated: Optional[bool] = False
     click_merchant_id: Optional[str] = None
     payme_merchant_id: Optional[str] = None
