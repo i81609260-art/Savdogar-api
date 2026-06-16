@@ -2,14 +2,16 @@
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.middleware.role_guard import role_required
 from app.models.user import User, UserRole
+from app.models.review import Review
 from app.services.review_service import ReviewService
 
 router = APIRouter(prefix="/api/reviews", tags=["Reviews"])
@@ -122,3 +124,60 @@ async def admin_reviews(
     db: AsyncSession = Depends(get_db),
 ) -> List[dict]:
     return await ReviewService(db).list_admin_reviews(current_user)
+
+
+@router.get(
+    "",
+    summary="Barcha sharhlar (admin)",
+    dependencies=[Depends(role_required(UserRole.ADMIN, UserRole.OPERATOR, UserRole.SUPERADMIN))],
+)
+async def all_reviews(
+    current_user: User = Depends(
+        role_required(UserRole.ADMIN, UserRole.OPERATOR, UserRole.SUPERADMIN)
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Get all reviews across all companies for admin panel."""
+    result = await db.execute(
+        select(Review).options().limit(1000)
+    )
+    reviews = result.scalars().all()
+    return {
+        "items": [
+            {
+                "id": r.id,
+                "user_name": r.user_name,
+                "rating": r.rating,
+                "comment": r.comment,
+                "tour_title": r.tour.title if r.tour else None,
+                "created_at": r.created_at,
+                "is_guest": r.is_guest,
+            }
+            for r in reviews
+        ]
+    }
+
+
+@router.delete(
+    "/{review_id}",
+    summary="Sharh o'chirish",
+    dependencies=[Depends(role_required(UserRole.ADMIN, UserRole.OPERATOR, UserRole.SUPERADMIN))],
+)
+async def delete_review(
+    review_id: int,
+    current_user: User = Depends(
+        role_required(UserRole.ADMIN, UserRole.OPERATOR, UserRole.SUPERADMIN)
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Delete a review by admin."""
+    result = await db.execute(select(Review).where(Review.id == review_id))
+    review = result.scalar_one_or_none()
+
+    if not review:
+        raise HTTPException(status_code=404, detail="Sharh topilmadi")
+
+    await db.delete(review)
+    await db.commit()
+
+    return {"success": True, "message": "Sharh o'chirildi"}
