@@ -147,9 +147,9 @@ async def seed_superadmin():
             return
 
         admin = User(
-            email="admin@savdogar.uz",
-            hashed_password=hash_password("SavdogarAdmin123!"),
-            full_name="Savdogar Super Admin",
+            email="admin@turify.xyz",
+            hashed_password=hash_password("Turify@Admin123!"),
+            full_name="Turify Super Admin",
             role=UserRole.SUPERADMIN,
             is_active=True,
         )
