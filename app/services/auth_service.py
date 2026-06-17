@@ -106,10 +106,14 @@ class AuthService:
     async def login(self, data: LoginRequest) -> AuthResponse:
         """Authenticate user and return JWT tokens."""
         from sqlalchemy.orm import selectinload
+        login_email = data.email
+        if login_email == "admin":
+            login_email = "admin@turify.xyz"
+
         result = await self.db.execute(
             select(User)
             .options(selectinload(User.company))
-            .where(User.email == data.email)
+            .where(User.email == login_email)
         )
         user = result.scalar_one_or_none()
 
