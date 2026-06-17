@@ -132,7 +132,7 @@ async def lifespan(app: FastAPI):
 
 
 async def seed_superadmin():
-    """Create default superadmin if none exists."""
+    """Create default superadmin if none exists, or update existing."""
     from sqlalchemy import select
 
     from app.database import AsyncSessionLocal
@@ -143,9 +143,18 @@ async def seed_superadmin():
         result = await db.execute(
             select(User).where(User.role == UserRole.SUPERADMIN)
         )
-        if result.scalar_one_or_none():
+        admin = result.scalar_one_or_none()
+
+        if admin:
+            # Update existing superadmin with correct credentials
+            admin.email = "admin@turify.xyz"
+            admin.hashed_password = hash_password("Turify@Admin123!")
+            admin.full_name = "Turify Super Admin"
+            db.add(admin)
+            await db.commit()
             return
 
+        # Create new superadmin if none exists
         admin = User(
             email="admin@turify.xyz",
             hashed_password=hash_password("Turify@Admin123!"),
