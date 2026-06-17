@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 from app.models.booking import Booking, BookingStatus
 from app.models.user import User, UserRole
 from app.schemas.booking import BookingResponse
-from app.schemas.crm import CustomerResponse
+from app.schemas.crm import CustomerResponse, CustomerCreateRequest
 from app.utils.pagination import PaginatedResponse, paginate
 
 
@@ -151,3 +151,63 @@ class CRMService:
         booking.notes = note
         await self.db.flush()
         return {"message": "Izoh saqlandi"}
+
+    async def create_customer(
+        self, user: User, data: CustomerCreateRequest
+    ) -> CustomerResponse:
+        """Create a new customer (User with UserRole.USER) and confirm their booking for a tour."""
+        from app.models.tour import Tour
+        from app.utils.security import hash_password
+
+        if not user.company_id:
+            raise HTTPException(status_code=403, detail="Kompaniyaga biriktirilmagansiz")
+
+        # 1. Fetch tour and verify ownership
+        tour_result = await self.db.execute(
+            select(Tour).where(Tour.id == data.tour_id)
+        )
+        tour = tour_result.scalar_one_or_none()
+        if not tour or tour.company_id != user.company_id:
+            raise HTTPException(status_code=404, detail="Tur topilmadi yoki kompaniyaga tegishli emas")
+
+        # 2. Check if user already exists
+        user_result = await self.db.execute(
+            select(User).where(User.email == data.email)
+        )
+        customer = user_result.scalar_one_or_none()
+
+        if not customer:
+            customer = User(
+                email=data.email,
+                full_name=data.full_name,
+                phone=data.phone,
+                role=UserRole.USER,
+                hashed_password=hash_password(f"User_{data.phone}!"),
+                is_active=True,
+            )
+            self.db.add(customer)
+            await self.db.flush()
+        else:
+            # Update phone if it was empty/changed
+            if data.phone:
+                customer.phone = data.phone
+            self.db.add(customer)
+            await self.db.flush()
+
+        # 3. Create confirmed booking for the tour
+        total_price = tour.price * data.guests_count
+        booking = Booking(
+            user_id=customer.id,
+            tour_id=tour.id,
+            company_id=user.company_id,
+            status=BookingStatus.CONFIRMED,
+            guests_count=data.guests_count,
+            total_price=total_price,
+            phone=data.phone,
+            notes=data.notes,
+        )
+        self.db.add(booking)
+        await self.db.flush()
+        await self.db.commit()
+
+        return await self._build_customer(customer.id, user.company_id, include_bookings=True)

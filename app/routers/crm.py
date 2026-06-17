@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.middleware.role_guard import role_required
 from app.models.user import User, UserRole
-from app.schemas.crm import CustomerResponse
+from app.schemas.crm import CustomerResponse, CustomerCreateRequest
 from app.services.crm_service import CRMService
 from app.utils.pagination import PaginatedResponse
 
@@ -67,3 +67,19 @@ async def add_customer_note(
     """Operator adds note to latest booking."""
     service = CRMService(db)
     return await service.update_customer_note(current_user, customer_id, data.note)
+
+
+@router.post(
+    "/customers",
+    response_model=CustomerResponse,
+    summary="Yangi mijoz qo'shish (telefon orqali sotib olinganda)",
+    dependencies=[Depends(role_required(UserRole.ADMIN, UserRole.OPERATOR))],
+)
+async def create_customer(
+    data: CustomerCreateRequest,
+    current_user: User = Depends(role_required(UserRole.ADMIN, UserRole.OPERATOR)),
+    db: AsyncSession = Depends(get_db),
+) -> CustomerResponse:
+    """Create a new manual customer with a confirmed tour booking."""
+    service = CRMService(db)
+    return await service.create_customer(current_user, data)

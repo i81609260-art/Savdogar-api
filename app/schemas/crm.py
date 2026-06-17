@@ -30,3 +30,14 @@ class CustomerResponse(BaseModel):
     segment: str
     last_booking_at: Optional[datetime]
     bookings: List[BookingResponse] = []
+
+
+class CustomerCreateRequest(BaseModel):
+    """Payload to manually create a customer with a tour booking."""
+
+    full_name: str
+    phone: str
+    email: str
+    tour_id: int
+    guests_count: int = 1
+    notes: Optional[str] = None
