@@ -45,6 +45,7 @@ from app.routers import (
     advanced_analytics,
     localization,
     white_label,
+    membership_bookings,
 )
 
 settings = get_settings()
@@ -92,6 +93,19 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE integration_configs ADD COLUMN sair_api_key VARCHAR(255)",
             "ALTER TABLE tours ADD COLUMN booking_type VARCHAR(20) DEFAULT 'group'",
             "ALTER TABLE tours ADD COLUMN currency VARCHAR(10) DEFAULT 'UZS'",
+            """CREATE TABLE IF NOT EXISTS membership_bookings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                plan VARCHAR(50) NOT NULL,
+                price VARCHAR(20) NOT NULL,
+                full_name VARCHAR(255) NOT NULL,
+                phone VARCHAR(50) NOT NULL,
+                email VARCHAR(255),
+                people_count VARCHAR(20),
+                duration VARCHAR(30),
+                message TEXT,
+                status VARCHAR(20) NOT NULL DEFAULT 'new',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+            )""",
             """CREATE TABLE IF NOT EXISTS company_telegram_bots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 company_id INTEGER NOT NULL UNIQUE REFERENCES companies(id),
@@ -219,6 +233,7 @@ app.include_router(ai_bot.router)
 app.include_router(advanced_analytics.router)
 app.include_router(localization.router)
 app.include_router(white_label.router)
+app.include_router(membership_bookings.router)
 
 app.state.sio = sio
 
