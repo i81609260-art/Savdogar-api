@@ -31,6 +31,7 @@ class BookingResponse(BaseModel):
     user_id: int
     user_name: Optional[str] = None
     user_email: Optional[str] = None
+    user_phone: Optional[str] = None
     tour_id: int
     tour_title: Optional[str] = None
     company_id: int
@@ -38,8 +39,8 @@ class BookingResponse(BaseModel):
     guests_count: int
     total_price: float
     phone: Optional[str] = None
-    notes: Optional[str]
-    cancel_reason: Optional[str]
+    notes: Optional[str] = None
+    cancel_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

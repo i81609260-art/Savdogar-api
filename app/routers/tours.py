@@ -8,6 +8,7 @@ from typing import Optional
 import aiofiles
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import get_settings
 from app.database import get_db
@@ -96,6 +97,7 @@ async def get_top_tours(
 
     result = await db.execute(
         select(Tour)
+        .options(selectinload(Tour.company))
         .outerjoin(subquery, Tour.id == subquery.c.tour_id)
         .where(Tour.is_active == True)  # noqa: E712
         .order_by(subquery.c.avg_rating.desc().nulls_last())
@@ -103,7 +105,7 @@ async def get_top_tours(
     )
     tours = result.scalars().all()
     service = TourService(db)
-    return [await service._to_response(t) for t in tours]
+    return [service._to_response(t) for t in tours]
 
 
 @router.get("/{tour_id}", response_model=TourResponse, summary="Tur tafsilotlari")

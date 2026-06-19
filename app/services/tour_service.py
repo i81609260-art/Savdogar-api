@@ -6,6 +6,7 @@ from typing import List, Optional
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.inspection import inspect
 from sqlalchemy.orm import selectinload
 
 from app.models.company import Company, CompanyStatus
@@ -24,10 +25,16 @@ class TourService:
 
     def _to_response(self, tour: Tour, company_name: Optional[str] = None) -> TourResponse:
         """Map ORM tour to response schema."""
+        company = None
+        if company_name:
+            company = None
+        else:
+            company = tour.__dict__.get("company")
+
         return TourResponse(
             id=tour.id,
             company_id=tour.company_id,
-            company_name=company_name or (tour.company.name if tour.company else None),
+            company_name=company_name or (company.name if company else None),
             title=tour.title,
             description=tour.description,
             city=tour.city,
