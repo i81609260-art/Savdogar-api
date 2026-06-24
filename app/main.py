@@ -46,6 +46,7 @@ from app.routers import (
     localization,
     white_label,
     membership_bookings,
+    guest_bookings,
 )
 
 settings = get_settings()
@@ -234,6 +235,7 @@ app.include_router(advanced_analytics.router)
 app.include_router(localization.router)
 app.include_router(white_label.router)
 app.include_router(membership_bookings.router)
+app.include_router(guest_bookings.router)
 
 app.state.sio = sio
 
