@@ -2,8 +2,9 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select
@@ -12,6 +13,8 @@ from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.middleware.role_guard import role_required
 from app.models.booking import Booking, BookingStatus
+from app.models.request import TourRequest
+from app.models.tour import Tour
 from app.models.user import User, UserRole
 from app.schemas.booking import BookingCreate, BookingResponse, BookingStatusUpdate
 from app.services.booking_service import BookingService
@@ -19,6 +22,51 @@ from app.services.pdf_service import generate_voucher
 from app.utils.pagination import PaginatedResponse
 
 router = APIRouter(prefix="/api/bookings", tags=["Bookings"])
+
+
+class GuestBookingCreate(BaseModel):
+    tour_id: int
+    full_name: str = Field(..., min_length=1)
+    phone: str = Field(..., min_length=7)
+    guests_count: int = Field(default=1, ge=1)
+    comment: Optional[str] = None
+
+
+class GuestBookingResponse(BaseModel):
+    id: int
+    status: str
+    message: str
+
+
+@router.post("/guest", response_model=GuestBookingResponse, summary="Mehmon bronlash (login talab qilinmaydi)")
+async def create_guest_booking(
+    data: GuestBookingCreate,
+    db: AsyncSession = Depends(get_db),
+) -> GuestBookingResponse:
+    """Public endpoint — CRM'ga yangi lead yaratadi."""
+    result = await db.execute(select(Tour).where(Tour.id == data.tour_id, Tour.is_active == True))
+    tour = result.scalar_one_or_none()
+    if not tour:
+        raise HTTPException(status_code=404, detail="Tur topilmadi")
+
+    notes = f"Tur: {tour.title}\nJoylar: {data.guests_count}"
+    if data.comment:
+        notes += f"\nIzoh: {data.comment}"
+
+    req = TourRequest(
+        company_id=tour.company_id,
+        lead_name=data.full_name,
+        lead_phone=data.phone,
+        lead_email="guest@opentour.uz",
+        destination=tour.city,
+        group_size=data.guests_count,
+        notes=notes,
+        status="Yangi",
+    )
+    db.add(req)
+    await db.commit()
+    await db.refresh(req)
+    return GuestBookingResponse(id=req.id, status="pending", message="Buyurtmangiz qabul qilindi!")
 
 
 def _get_sio(request: Request):
