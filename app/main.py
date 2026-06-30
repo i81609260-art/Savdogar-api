@@ -172,7 +172,7 @@ async def seed_superadmin():
         # Create new superadmin if none exists
         admin = User(
             email="admin@turify.xyz",
-            hashed_password=hash_password("admin123"),
+            hashed_password=hash_password("Turify@Admin2026!"),
             full_name="Turify Super Admin",
             role=UserRole.SUPERADMIN,
             is_active=True,

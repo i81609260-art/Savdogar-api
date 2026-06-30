@@ -19,6 +19,7 @@ from app.models.user import User, UserRole
 from app.schemas.booking import BookingCreate, BookingResponse, BookingStatusUpdate
 from app.services.booking_service import BookingService
 from app.services.pdf_service import generate_voucher
+from app.utils.limiter import limiter
 from app.utils.pagination import PaginatedResponse
 
 router = APIRouter(prefix="/api/bookings", tags=["Bookings"])
@@ -28,7 +29,8 @@ class GuestBookingCreate(BaseModel):
     tour_id: int
     full_name: str = Field(..., min_length=1)
     phone: str = Field(..., min_length=7)
-    guests_count: int = Field(default=1, ge=1)
+    email: Optional[str] = None
+    guests_count: int = Field(default=1, ge=1, le=100)
     comment: Optional[str] = None
 
 
@@ -39,7 +41,9 @@ class GuestBookingResponse(BaseModel):
 
 
 @router.post("/guest", response_model=GuestBookingResponse, summary="Mehmon bronlash (login talab qilinmaydi)")
+@limiter.limit("5/minute")
 async def create_guest_booking(
+    request: Request,
     data: GuestBookingCreate,
     db: AsyncSession = Depends(get_db),
 ) -> GuestBookingResponse:
@@ -57,7 +61,7 @@ async def create_guest_booking(
         company_id=tour.company_id,
         lead_name=data.full_name,
         lead_phone=data.phone,
-        lead_email="guest@opentour.uz",
+        lead_email=(data.email.strip() if data.email and data.email.strip() else "guest@opentour.uz"),
         destination=tour.city,
         group_size=data.guests_count,
         notes=notes,
@@ -66,7 +70,7 @@ async def create_guest_booking(
     db.add(req)
     await db.commit()
     await db.refresh(req)
-    return GuestBookingResponse(id=req.id, status="pending", message="Buyurtmangiz qabul qilindi!")
+    return GuestBookingResponse(id=req.id, status=req.status, message="Buyurtmangiz qabul qilindi!")
 
 
 def _get_sio(request: Request):
