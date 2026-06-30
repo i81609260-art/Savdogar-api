@@ -163,7 +163,7 @@ async def seed_superadmin():
         if admin:
             # Update existing superadmin with correct credentials
             admin.email = "admin@turify.xyz"
-            admin.hashed_password = hash_password("admin123")
+            admin.hashed_password = hash_password("Turify@Admin2026!")
             admin.full_name = "Turify Super Admin"
             db.add(admin)
             await db.commit()
