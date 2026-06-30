@@ -4,7 +4,7 @@ import os
 import uuid
 
 import aiofiles
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -13,12 +13,24 @@ from app.config import get_settings
 from app.database import get_db
 from app.models.company import Company
 from app.schemas.company import CompanyResponse
+from app.utils.limiter import limiter
 
 router = APIRouter(prefix="/api/companies", tags=["Companies"])
 
 settings = get_settings()
 
-ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
+# Map each accepted MIME type to a safe, fixed extension. The stored extension
+# is derived from the (validated) content type — never from the user-supplied
+# filename — so a spoofed name like "x.svg"/"x.html" can't be saved and later
+# served as executable content (stored XSS).
+EXT_BY_TYPE = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
+ALLOWED_IMAGE_TYPES = set(EXT_BY_TYPE)
 MAX_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
@@ -97,7 +109,9 @@ async def get_company_public(
 
 
 @router.post("/upload-logo", summary="Logotip rasmini yuklash (public)")
+@limiter.limit("10/minute")
 async def upload_logo(
+    request: Request,
     file: UploadFile = File(...),
 ) -> dict:
     """Upload a company logo image and return its URL. No auth required (used during registration)."""
@@ -113,7 +127,7 @@ async def upload_logo(
         raise HTTPException(status_code=400, detail="Fayl hajmi 5 MB dan oshmasligi kerak")
 
     os.makedirs(settings.upload_dir, exist_ok=True)
-    ext = os.path.splitext(file.filename or "")[1].lower() or ".jpg"
+    ext = EXT_BY_TYPE[content_type]
     filename = f"logo_{uuid.uuid4()}{ext}"
     filepath = os.path.join(settings.upload_dir, filename)
 
