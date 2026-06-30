@@ -31,5 +31,7 @@ async def company_tours(
         page=page,
         page_size=page_size,
         company_id=current_user.company_id,
-        active_only=False,
+        # Deleted tours are soft-deleted (is_active=False) and should not
+        # linger in the admin list — only is_active tours are shown.
+        active_only=True,
     )

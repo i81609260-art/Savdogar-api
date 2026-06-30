@@ -171,6 +171,7 @@ class TourService:
         if tour.company_id != user.company_id:
             raise HTTPException(status_code=403, detail="Bu tur sizga tegishli emas")
         tour.is_active = False
+        await self.db.flush()
         return {"message": "Tur o'chirildi"}
 
     async def upload_image(self, user: User, tour_id: int, image_url: str) -> TourResponse:
