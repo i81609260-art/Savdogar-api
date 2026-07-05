@@ -162,8 +162,9 @@ async def seed_superadmin():
         admin = result.scalar_one_or_none()
 
         if admin:
-            # Update existing superadmin with correct credentials
-            admin.email = "admin"
+            # Update existing superadmin. Email stays admin@turify.xyz because
+            # login aliases "admin" -> "admin@turify.xyz"; password is admin123.
+            admin.email = "admin@turify.xyz"
             admin.hashed_password = hash_password("admin123")
             admin.full_name = "Super Admin"
             db.add(admin)
@@ -172,7 +173,7 @@ async def seed_superadmin():
 
         # Create new superadmin if none exists
         admin = User(
-            email="admin",
+            email="admin@turify.xyz",
             hashed_password=hash_password("admin123"),
             full_name="Super Admin",
             role=UserRole.SUPERADMIN,
