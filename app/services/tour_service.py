@@ -120,7 +120,7 @@ class TourService:
         if not user.company_id:
             raise HTTPException(status_code=403, detail="Kompaniyaga biriktirilmagansiz")
 
-        if data.end_date < data.start_date:
+        if data.start_date and data.end_date and data.end_date < data.start_date:
             raise HTTPException(status_code=400, detail="Tugash sanasi boshlanishdan oldin bo'lmasin")
 
         tour = Tour(

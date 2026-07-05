@@ -16,8 +16,8 @@ class TourCreate(BaseModel):
     price: float = Field(..., gt=0)
     currency: str = Field(default="UZS")
     duration_days: int = Field(..., ge=1)
-    start_date: date
-    end_date: date
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
     available_slots: int = Field(..., ge=1)
     booking_type: str = Field(default="group")
 
@@ -52,8 +52,8 @@ class TourResponse(BaseModel):
     price: float
     currency: str = "UZS"
     duration_days: int
-    start_date: date
-    end_date: date
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
     available_slots: int
     image_url: Optional[str]
     booking_type: str = "group"

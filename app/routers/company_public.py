@@ -50,6 +50,8 @@ async def get_company_by_slug(
     company = result.scalar_one_or_none()
     if not company:
         raise HTTPException(status_code=404, detail="Kompaniya topilmadi")
+    if getattr(company, "site_enabled", True) is False:
+        raise HTTPException(status_code=404, detail="Bu kompaniya uchun sayt yoqilmagan")
 
     # Create response with owner's payment credentials
     response_dict = CompanyResponse.model_validate(company).model_dump()

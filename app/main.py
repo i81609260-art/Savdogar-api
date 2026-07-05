@@ -30,6 +30,7 @@ from app.routers import (
     requests as requests_router,
 )
 from app.routers import waitlist, reviews, telegram as telegram_router
+from app.routers import exports as exports_router
 from app.routers import company_public
 from app.routers import chat as chat_router
 from app.routers.tour_groups import public_router as tour_groups_public_router
@@ -162,18 +163,18 @@ async def seed_superadmin():
 
         if admin:
             # Update existing superadmin with correct credentials
-            admin.email = "admin@turify.xyz"
-            admin.hashed_password = hash_password("Turify@Admin2026!")
-            admin.full_name = "Turify Super Admin"
+            admin.email = "admin"
+            admin.hashed_password = hash_password("admin123")
+            admin.full_name = "Super Admin"
             db.add(admin)
             await db.commit()
             return
 
         # Create new superadmin if none exists
         admin = User(
-            email="admin@turify.xyz",
-            hashed_password=hash_password("Turify@Admin2026!"),
-            full_name="Turify Super Admin",
+            email="admin",
+            hashed_password=hash_password("admin123"),
+            full_name="Super Admin",
             role=UserRole.SUPERADMIN,
             is_active=True,
         )
@@ -209,6 +210,7 @@ app.include_router(bookings.router)
 app.include_router(crm.router)
 app.include_router(requests_router.router)
 app.include_router(reports.router)
+app.include_router(exports_router.router)
 app.include_router(admin.router)
 app.include_router(superadmin.router)
 app.include_router(notifications.router)

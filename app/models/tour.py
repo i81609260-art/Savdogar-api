@@ -28,8 +28,9 @@ class Tour(Base):
     price: Mapped[float] = mapped_column(Float)
     currency: Mapped[str] = mapped_column(String(10), default="UZS")
     duration_days: Mapped[int] = mapped_column(Integer, default=1)
-    start_date: Mapped[date] = mapped_column(Date, index=True)
-    end_date: Mapped[date] = mapped_column(Date)
+    # Dates are optional — a tour may have "flexible / to be agreed" dates.
+    start_date: Mapped[Optional[date]] = mapped_column(Date, index=True, nullable=True)
+    end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     available_slots: Mapped[int] = mapped_column(Integer)
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     booking_type: Mapped[str] = mapped_column(String(20), default="group")
