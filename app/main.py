@@ -74,8 +74,12 @@ async def lifespan(app: FastAPI):
         os.makedirs(settings.data_dir, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Safely add any columns/tables introduced after initial deploy
-        for stmt in [
+
+    # Safely add any columns/tables introduced after initial deploy. Each
+    # statement runs in its OWN transaction — on Postgres a failed statement
+    # (e.g. duplicate column) aborts the transaction, so sharing one would
+    # silently skip every migration that follows the first conflict.
+    for stmt in [
             "ALTER TABLE companies ADD COLUMN sair_integrated BOOLEAN DEFAULT 0",
             "ALTER TABLE users ADD COLUMN telegram_chat_id VARCHAR(50)",
             "ALTER TABLE users ADD COLUMN click_merchant_id VARCHAR(100)",
@@ -90,11 +94,15 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE bookings ADD COLUMN group_id INTEGER",
             "ALTER TABLE companies ADD COLUMN company_info TEXT",
             "ALTER TABLE companies ADD COLUMN website_customization TEXT",
+            "ALTER TABLE companies ADD COLUMN site_enabled BOOLEAN DEFAULT TRUE",
             "ALTER TABLE reviews ADD COLUMN company_id INTEGER REFERENCES companies(id)",
             "ALTER TABLE integration_configs ADD COLUMN sair_company_id VARCHAR(100)",
             "ALTER TABLE integration_configs ADD COLUMN sair_api_key VARCHAR(255)",
             "ALTER TABLE tours ADD COLUMN booking_type VARCHAR(20) DEFAULT 'group'",
             "ALTER TABLE tours ADD COLUMN currency VARCHAR(10) DEFAULT 'UZS'",
+            # Optional tour dates (Postgres; SQLite handled by startup.py rebuild)
+            "ALTER TABLE tours ALTER COLUMN start_date DROP NOT NULL",
+            "ALTER TABLE tours ALTER COLUMN end_date DROP NOT NULL",
             """CREATE TABLE IF NOT EXISTS membership_bookings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 plan VARCHAR(50) NOT NULL,
@@ -138,11 +146,12 @@ async def lifespan(app: FastAPI):
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 FOREIGN KEY(company_id) REFERENCES companies(id)
             )""",
-        ]:
-            try:
+    ]:
+        try:
+            async with engine.begin() as conn:
                 await conn.execute(__import__("sqlalchemy").text(stmt))
-            except Exception:
-                pass  # Column already exists — ignore
+        except Exception:
+            pass  # Already applied or not applicable to this dialect
     await seed_superadmin()
     yield
 
