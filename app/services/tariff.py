@@ -9,69 +9,74 @@ from typing import Any, Dict
 
 DEFAULT_TARIFF = "boshlangich"
 
-# Ordered from cheapest to most capable. `max_*` of None means unlimited.
+# Ordered cheapest → most capable. `max_*` of None means unlimited.
+# `site_level`: "optional" (paid add-on) | "standard" | "professional".
 TARIFFS: Dict[str, Dict[str, Any]] = {
     "boshlangich": {
         "key": "boshlangich",
         "name": "Boshlang'ich",
-        "price": 199000,
+        "price": 199990,
         "order": 1,
         "tagline": "Kichik agentliklar uchun",
-        "max_tours": 20,
-        "max_operators": 2,
+        "max_tours": 50,
+        "max_branches": 1,
+        "site_level": "optional",
+        "site_addon_price": 20000,
         "features": {
             "crm": True,
             "bookings": True,
+            "unlimited_customers": True,
+            "telegram_bot": True,
             "reports": False,
-            "website": False,
-            "telegram_bot": False,
+            "website": False,          # optional add-on (+20 000)
             "ai_chat": False,
             "white_label": False,
             "api_access": False,
             "priority_support": False,
-            "multi_branch": False,
         },
     },
     "biznes": {
         "key": "biznes",
         "name": "Biznes",
-        "price": 499000,
+        "price": 499990,
         "order": 2,
         "tagline": "O'sayotgan firmalar uchun",
-        "max_tours": 500,
-        "max_operators": 10,
+        "max_tours": 300,
+        "max_branches": 3,
+        "site_level": "standard",
         "features": {
             "crm": True,
             "bookings": True,
+            "unlimited_customers": True,
+            "telegram_bot": True,
             "reports": True,
             "website": True,
-            "telegram_bot": True,
             "ai_chat": True,
             "white_label": False,
             "api_access": False,
             "priority_support": False,
-            "multi_branch": False,
         },
     },
     "premium": {
         "key": "premium",
         "name": "Premium",
-        "price": 999000,
+        "price": 999990,
         "order": 3,
-        "tagline": "Cheksiz imkoniyat — yetakchi firmalar uchun",
+        "tagline": "Cheksiz — yetakchi firmalar uchun",
         "max_tours": None,       # unlimited
-        "max_operators": None,   # unlimited
+        "max_branches": None,    # unlimited
+        "site_level": "professional",
         "features": {
             "crm": True,
             "bookings": True,
+            "unlimited_customers": True,
+            "telegram_bot": True,
             "reports": True,
             "website": True,
-            "telegram_bot": True,
             "ai_chat": True,
             "white_label": True,
             "api_access": True,
             "priority_support": True,
-            "multi_branch": True,
         },
     },
 }
