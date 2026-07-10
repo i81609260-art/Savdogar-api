@@ -54,6 +54,7 @@ class AuthService:
             logo_url=data.company_logo_url,
             sair_integrated=bool(data.sair_integrated),
             site_enabled=bool(data.site_enabled) if data.site_enabled is not None else True,
+            tariff=getattr(data, "tariff", None) or "boshlangich",
             status=CompanyStatus.PENDING,
         )
         self.db.add(company)

@@ -17,6 +17,7 @@ class RegisterRequest(BaseModel):
     company_logo_url: Optional[str] = None
     sair_integrated: Optional[bool] = False
     site_enabled: Optional[bool] = True
+    tariff: Optional[str] = "boshlangich"
     admin_email: EmailStr
     admin_password: str = Field(..., min_length=8)
     admin_full_name: str = Field(..., min_length=2)
