@@ -194,6 +194,7 @@ class SuperAdminService:
                     owner_id=c.owner_id,
                     created_at=c.created_at,
                     updated_at=c.updated_at,
+                    tariff=getattr(c, "tariff", "boshlangich"),
                     users_count=len(c.users),
                     tours_count=tours_count,
                 ))

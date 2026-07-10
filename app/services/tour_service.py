@@ -120,6 +120,26 @@ class TourService:
         if not user.company_id:
             raise HTTPException(status_code=403, detail="Kompaniyaga biriktirilmagansiz")
 
+        # Enforce the company's subscription-plan tour limit.
+        from app.models.company import Company
+        from app.services.tariff import DEFAULT_TARIFF, get_tariff, within_tour_limit
+
+        company = (
+            await self.db.execute(select(Company).where(Company.id == user.company_id))
+        ).scalar_one_or_none()
+        tour_count = (
+            await self.db.execute(
+                select(func.count(Tour.id)).where(Tour.company_id == user.company_id)
+            )
+        ).scalar() or 0
+        tariff_key = getattr(company, "tariff", DEFAULT_TARIFF) if company else DEFAULT_TARIFF
+        if not within_tour_limit(tariff_key, tour_count):
+            limit = get_tariff(tariff_key)["max_tours"]
+            raise HTTPException(
+                status_code=403,
+                detail=f"Tarif limiti: {limit} ta tur. Ko'proq tur qo'shish uchun tarifni yangilang.",
+            )
+
         if data.start_date and data.end_date and data.end_date < data.start_date:
             raise HTTPException(status_code=400, detail="Tugash sanasi boshlanishdan oldin bo'lmasin")
 

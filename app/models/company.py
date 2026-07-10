@@ -58,6 +58,8 @@ class Company(Base):
     website_customization: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # Whether a public website should be generated/shown for this company.
     site_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=True)
+    # Subscription plan key: boshlangich | biznes | premium (see services/tariff.py).
+    tariff: Mapped[str] = mapped_column(String(30), default="boshlangich", nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

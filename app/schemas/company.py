@@ -25,6 +25,7 @@ class CompanyResponse(BaseModel):
     logo_url: Optional[str] = None
     company_info: Optional[str] = None
     sair_integrated: Optional[bool] = False
+    tariff: Optional[str] = "boshlangich"
     click_merchant_id: Optional[str] = None
     payme_merchant_id: Optional[str] = None
     created_at: datetime
@@ -50,6 +51,7 @@ class CompanyDetailResponse(BaseModel):
     website_customization: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    tariff: Optional[str] = "boshlangich"
     users_count: Optional[int] = 0
     tours_count: Optional[int] = 0
 
