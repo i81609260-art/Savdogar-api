@@ -32,6 +32,10 @@ class Tour(Base):
     start_date: Mapped[Optional[date]] = mapped_column(Date, index=True, nullable=True)
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     available_slots: Mapped[int] = mapped_column(Integer)
+    # Which branch offers this tour; null = shared across all branches.
+    branch_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("branches.id"), nullable=True, index=True
+    )
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     booking_type: Mapped[str] = mapped_column(String(20), default="group")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

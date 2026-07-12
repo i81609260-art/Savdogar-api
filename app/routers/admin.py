@@ -22,10 +22,22 @@ router = APIRouter(prefix="/api/admin", tags=["Admin"])
 async def company_tours(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
+    branch_id: int | None = Query(None),
     current_user: User = Depends(role_required(UserRole.ADMIN, UserRole.OPERATOR)),
     db: AsyncSession = Depends(get_db),
 ) -> PaginatedResponse[TourResponse]:
-    """List tours belonging to admin's company."""
+    """List tours belonging to admin's company.
+
+    A branch operator sees only their branch's tours (+ shared ones); an admin
+    sees everything and may filter by branch via `?branch_id=`.
+    """
+    scope_branch_id = None
+    branch_filter = None
+    if current_user.role == UserRole.OPERATOR and current_user.branch_id:
+        scope_branch_id = current_user.branch_id
+    elif branch_id:
+        branch_filter = branch_id
+
     service = TourService(db)
     return await service.list_tours(
         page=page,
@@ -34,4 +46,6 @@ async def company_tours(
         # Deleted tours are soft-deleted (is_active=False) and should not
         # linger in the admin list — only is_active tours are shown.
         active_only=True,
+        scope_branch_id=scope_branch_id,
+        branch_filter=branch_filter,
     )

@@ -20,6 +20,7 @@ class TourCreate(BaseModel):
     end_date: Optional[date] = None
     available_slots: int = Field(..., ge=1)
     booking_type: str = Field(default="group")
+    branch_id: Optional[int] = None
 
 
 class TourUpdate(BaseModel):
@@ -55,6 +56,7 @@ class TourResponse(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     available_slots: int
+    branch_id: Optional[int] = None
     image_url: Optional[str]
     booking_type: str = "group"
     is_active: bool

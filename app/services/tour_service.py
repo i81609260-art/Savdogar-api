@@ -45,6 +45,7 @@ class TourService:
             start_date=tour.start_date,
             end_date=tour.end_date,
             available_slots=tour.available_slots,
+            branch_id=getattr(tour, "branch_id", None),
             image_url=tour.image_url,
             booking_type=tour.booking_type or "group",
             is_active=tour.is_active,
@@ -63,13 +64,26 @@ class TourService:
         search: Optional[str] = None,
         company_id: Optional[int] = None,
         active_only: bool = True,
+        scope_branch_id: Optional[int] = None,
+        branch_filter: Optional[int] = None,
     ) -> PaginatedResponse[TourResponse]:
-        """List tours with filters and pagination."""
+        """List tours with filters and pagination.
+
+        `scope_branch_id` limits results to a branch's own tours + shared
+        (null-branch) ones — used to restrict a branch operator's view.
+        `branch_filter` is an exact-match filter used by admins.
+        """
         query = select(Tour).options(selectinload(Tour.company))
         conditions = []
 
         if active_only:
             conditions.append(Tour.is_active == True)  # noqa: E712
+        if scope_branch_id is not None:
+            conditions.append(
+                or_(Tour.branch_id == scope_branch_id, Tour.branch_id.is_(None))
+            )
+        if branch_filter is not None:
+            conditions.append(Tour.branch_id == branch_filter)
         if city:
             conditions.append(Tour.city.ilike(f"%{city}%"))
         if min_price is not None:
@@ -143,6 +157,8 @@ class TourService:
         if data.start_date and data.end_date and data.end_date < data.start_date:
             raise HTTPException(status_code=400, detail="Tugash sanasi boshlanishdan oldin bo'lmasin")
 
+        # Assign to the chosen branch, or the creator's own branch by default.
+        branch_id = data.branch_id if data.branch_id is not None else user.branch_id
         tour = Tour(
             company_id=user.company_id,
             title=data.title,
@@ -156,6 +172,7 @@ class TourService:
             end_date=data.end_date,
             available_slots=data.available_slots,
             booking_type=data.booking_type,
+            branch_id=branch_id,
         )
         self.db.add(tour)
         await self.db.flush()
