@@ -32,6 +32,7 @@ from app.routers import (
 from app.routers import waitlist, reviews, telegram as telegram_router
 from app.routers import exports as exports_router
 from app.routers import tariff as tariff_router
+from app.routers import branches as branches_router
 from app.routers import company_public
 from app.routers import chat as chat_router
 from app.routers.tour_groups import public_router as tour_groups_public_router
@@ -97,6 +98,17 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE companies ADD COLUMN website_customization TEXT",
             "ALTER TABLE companies ADD COLUMN site_enabled BOOLEAN DEFAULT TRUE",
             "ALTER TABLE companies ADD COLUMN tariff VARCHAR(30) DEFAULT 'boshlangich'",
+            "ALTER TABLE users ADD COLUMN branch_id INTEGER",
+            """CREATE TABLE IF NOT EXISTS branches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id INTEGER NOT NULL REFERENCES companies(id),
+                name VARCHAR(255) NOT NULL,
+                city VARCHAR(100) NOT NULL,
+                address VARCHAR(500),
+                phone VARCHAR(50),
+                is_main BOOLEAN DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+            )""",
             """CREATE TABLE IF NOT EXISTS tariff_changes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 company_id INTEGER NOT NULL REFERENCES companies(id),
@@ -232,6 +244,7 @@ app.include_router(requests_router.router)
 app.include_router(reports.router)
 app.include_router(exports_router.router)
 app.include_router(tariff_router.router)
+app.include_router(branches_router.router)
 app.include_router(admin.router)
 app.include_router(superadmin.router)
 app.include_router(notifications.router)

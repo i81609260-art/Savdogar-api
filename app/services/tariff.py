@@ -96,3 +96,9 @@ def within_tour_limit(tariff_key: str | None, current_tour_count: int) -> bool:
     """True if the company can still create another tour under its plan."""
     limit = get_tariff(tariff_key)["max_tours"]
     return limit is None or current_tour_count < limit
+
+
+def within_branch_limit(tariff_key: str | None, current_branch_count: int) -> bool:
+    """True if the company can still create another branch under its plan."""
+    limit = get_tariff(tariff_key)["max_branches"]
+    return limit is None or current_branch_count < limit
