@@ -33,6 +33,10 @@ class Booking(Base):
     tour_id: Mapped[int] = mapped_column(ForeignKey("tours.id"), index=True)
     group_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tour_groups.id"), nullable=True, index=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    # Branch that owns this booking (inherited from the tour); null = shared.
+    branch_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("branches.id"), nullable=True, index=True
+    )
     status: Mapped[BookingStatus] = mapped_column(
         Enum(BookingStatus), default=BookingStatus.PENDING
     )

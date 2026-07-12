@@ -94,6 +94,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE companies ADD COLUMN company_type VARCHAR(20) DEFAULT 'multi'",
             "ALTER TABLE bookings ADD COLUMN phone VARCHAR(20)",
             "ALTER TABLE bookings ADD COLUMN group_id INTEGER",
+            "ALTER TABLE bookings ADD COLUMN branch_id INTEGER",
             "ALTER TABLE companies ADD COLUMN company_info TEXT",
             "ALTER TABLE companies ADD COLUMN website_customization TEXT",
             "ALTER TABLE companies ADD COLUMN site_enabled BOOLEAN DEFAULT TRUE",

@@ -4,7 +4,7 @@ import asyncio
 from typing import List, Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -65,6 +65,7 @@ class BookingService:
             user_id=user.id,
             tour_id=tour.id,
             company_id=tour.company_id,
+            branch_id=getattr(tour, "branch_id", None),  # inherit the tour's branch
             status=BookingStatus.PENDING,
             guests_count=data.guests_count,
             total_price=total_price,
@@ -223,6 +224,11 @@ class BookingService:
             query = query.where(Booking.user_id == user.id)
         elif user.role in (UserRole.ADMIN, UserRole.OPERATOR):
             query = query.where(Booking.company_id == user.company_id)
+            # A branch operator sees only their branch's bookings (+ shared).
+            if user.role == UserRole.OPERATOR and user.branch_id:
+                query = query.where(
+                    or_(Booking.branch_id == user.branch_id, Booking.branch_id.is_(None))
+                )
         elif company_id:
             query = query.where(Booking.company_id == company_id)
 

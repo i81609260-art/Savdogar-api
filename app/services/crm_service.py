@@ -3,7 +3,7 @@
 from typing import List, Optional
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -36,9 +36,15 @@ class CRMService:
         if not user.company_id:
             raise HTTPException(status_code=403, detail="Kompaniyaga biriktirilmagansiz")
 
+        booking_conds = [Booking.company_id == user.company_id]
+        # A branch operator sees only customers with a booking in their branch.
+        if user.role == UserRole.OPERATOR and user.branch_id:
+            booking_conds.append(
+                or_(Booking.branch_id == user.branch_id, Booking.branch_id.is_(None))
+            )
         subq = (
             select(Booking.user_id)
-            .where(Booking.company_id == user.company_id)
+            .where(*booking_conds)
             .distinct()
             .subquery()
         )
@@ -200,6 +206,8 @@ class CRMService:
             user_id=customer.id,
             tour_id=tour.id,
             company_id=user.company_id,
+            # Inherit the tour's branch, or fall back to the operator's branch.
+            branch_id=getattr(tour, "branch_id", None) or user.branch_id,
             status=BookingStatus.CONFIRMED,
             guests_count=data.guests_count,
             total_price=total_price,
