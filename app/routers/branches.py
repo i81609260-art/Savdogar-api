@@ -13,6 +13,7 @@ from app.models.branch import Branch
 from app.models.company import Company
 from app.models.user import User, UserRole
 from app.services.tariff import DEFAULT_TARIFF, get_tariff, within_branch_limit
+from app.utils.security import hash_password
 
 router = APIRouter(prefix="/api/branches", tags=["Branches"])
 
@@ -147,5 +148,125 @@ async def delete_branch(
     for u in staff:
         u.branch_id = None
     await db.delete(branch)
+    await db.commit()
+    return {"status": "deleted"}
+
+
+# ── Staff (operators) ────────────────────────────────────────────────────────
+
+class StaffOut(BaseModel):
+    id: int
+    full_name: str
+    email: str
+    role: str
+    branch_id: Optional[int] = None
+    is_active: bool = True
+
+    model_config = {"from_attributes": True}
+
+
+class StaffIn(BaseModel):
+    full_name: str
+    email: str
+    password: str
+    branch_id: Optional[int] = None
+
+
+class BranchAssign(BaseModel):
+    branch_id: Optional[int] = None
+
+
+@router.get("/staff", summary="Xodimlar (operatorlar)")
+async def list_staff(
+    current_user: User = Depends(_ADMIN_ONLY),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Company admins/operators and the branch each is assigned to."""
+    if not current_user.company_id:
+        raise HTTPException(status_code=400, detail="Kompaniyaga biriktirilmagansiz")
+    rows = (
+        await db.execute(
+            select(User).where(
+                User.company_id == current_user.company_id,
+                User.role.in_([UserRole.ADMIN, UserRole.OPERATOR]),
+            ).order_by(User.role.asc(), User.id.asc())
+        )
+    ).scalars().all()
+    return {"staff": [StaffOut(
+        id=u.id, full_name=u.full_name, email=u.email, role=u.role.value,
+        branch_id=u.branch_id, is_active=bool(u.is_active),
+    ) for u in rows]}
+
+
+@router.post("/staff", response_model=StaffOut, summary="Operator qo'shish")
+async def create_staff(
+    data: StaffIn,
+    current_user: User = Depends(_ADMIN_ONLY),
+    db: AsyncSession = Depends(get_db),
+) -> StaffOut:
+    if not current_user.company_id:
+        raise HTTPException(status_code=400, detail="Kompaniyaga biriktirilmagansiz")
+    exists = (
+        await db.execute(select(User).where(User.email == data.email))
+    ).scalar_one_or_none()
+    if exists:
+        raise HTTPException(status_code=400, detail="Bu email allaqachon band")
+    user = User(
+        email=data.email,
+        hashed_password=hash_password(data.password),
+        full_name=data.full_name,
+        role=UserRole.OPERATOR,
+        company_id=current_user.company_id,
+        branch_id=data.branch_id,
+        is_active=True,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return StaffOut(
+        id=user.id, full_name=user.full_name, email=user.email, role=user.role.value,
+        branch_id=user.branch_id, is_active=True,
+    )
+
+
+@router.patch("/staff/{user_id}", summary="Xodimni filialga biriktirish")
+async def assign_staff_branch(
+    user_id: int,
+    data: BranchAssign,
+    current_user: User = Depends(_ADMIN_ONLY),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    user = (
+        await db.execute(select(User).where(User.id == user_id))
+    ).scalar_one_or_none()
+    if not user or user.company_id != current_user.company_id:
+        raise HTTPException(status_code=404, detail="Xodim topilmadi")
+    if data.branch_id is not None:
+        branch = (
+            await db.execute(select(Branch).where(Branch.id == data.branch_id))
+        ).scalar_one_or_none()
+        if not branch or branch.company_id != current_user.company_id:
+            raise HTTPException(status_code=404, detail="Filial topilmadi")
+    user.branch_id = data.branch_id
+    await db.commit()
+    return {"status": "ok", "branch_id": user.branch_id}
+
+
+@router.delete("/staff/{user_id}", summary="Operatorni o'chirish")
+async def delete_staff(
+    user_id: int,
+    current_user: User = Depends(_ADMIN_ONLY),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="O'zingizni o'chira olmaysiz")
+    user = (
+        await db.execute(select(User).where(User.id == user_id))
+    ).scalar_one_or_none()
+    if not user or user.company_id != current_user.company_id:
+        raise HTTPException(status_code=404, detail="Xodim topilmadi")
+    if user.role == UserRole.ADMIN:
+        raise HTTPException(status_code=400, detail="Adminni o'chirib bo'lmaydi")
+    await db.delete(user)
     await db.commit()
     return {"status": "deleted"}
