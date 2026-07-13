@@ -107,9 +107,13 @@ async def lifespan(app: FastAPI):
                 city VARCHAR(100) NOT NULL,
                 address VARCHAR(500),
                 phone VARCHAR(50),
+                lat FLOAT,
+                lng FLOAT,
                 is_main BOOLEAN DEFAULT 0,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
             )""",
+            "ALTER TABLE branches ADD COLUMN lat FLOAT",
+            "ALTER TABLE branches ADD COLUMN lng FLOAT",
             """CREATE TABLE IF NOT EXISTS tariff_changes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 company_id INTEGER NOT NULL REFERENCES companies(id),

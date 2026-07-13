@@ -26,6 +26,8 @@ class BranchIn(BaseModel):
     city: str
     address: Optional[str] = None
     phone: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
 
 
 class BranchOut(BaseModel):
@@ -34,6 +36,8 @@ class BranchOut(BaseModel):
     city: str
     address: Optional[str] = None
     phone: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
     is_main: bool = False
 
     model_config = {"from_attributes": True}
@@ -101,6 +105,8 @@ async def create_branch(
         city=data.city,
         address=data.address,
         phone=data.phone,
+        lat=data.lat,
+        lng=data.lng,
         is_main=(count == 0),  # first branch is the main office
     )
     db.add(branch)
@@ -125,6 +131,8 @@ async def update_branch(
     branch.city = data.city
     branch.address = data.address
     branch.phone = data.phone
+    branch.lat = data.lat
+    branch.lng = data.lng
     await db.commit()
     await db.refresh(branch)
     return BranchOut.model_validate(branch)
