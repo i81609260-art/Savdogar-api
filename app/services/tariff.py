@@ -18,7 +18,7 @@ TARIFFS: Dict[str, Dict[str, Any]] = {
         "price": 199990,
         "order": 1,
         "tagline": "Kichik agentliklar uchun",
-        "max_tours": 50,
+        "max_tours": None,       # cheksiz tur
         "max_branches": 1,
         "site_level": "optional",
         "site_addon_price": 20000,
