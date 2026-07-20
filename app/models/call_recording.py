@@ -16,6 +16,8 @@ class CallRecording(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    # Qaysi filialga tegishli. Bo'sh bo'lsa — umumiy, hamma ko'radi.
+    branch_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     # Kim yukladi.
     user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     # Ixtiyoriy — qaysi leadga tegishli.

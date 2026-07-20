@@ -132,6 +132,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE tours ADD COLUMN currency VARCHAR(10) DEFAULT 'UZS'",
             "ALTER TABLE tours ADD COLUMN branch_id INTEGER",
             "ALTER TABLE tour_requests ADD COLUMN source VARCHAR(20) DEFAULT 'qolda'",
+            "ALTER TABLE tour_requests ADD COLUMN branch_id INTEGER",
             """CREATE TABLE IF NOT EXISTS call_recordings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 company_id INTEGER NOT NULL REFERENCES companies(id),
@@ -153,6 +154,7 @@ async def lifespan(app: FastAPI):
                 operator_notes TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
             )""",
+            "ALTER TABLE call_recordings ADD COLUMN branch_id INTEGER",
             # Optional tour dates (Postgres; SQLite handled by startup.py rebuild)
             "ALTER TABLE tours ALTER COLUMN start_date DROP NOT NULL",
             "ALTER TABLE tours ALTER COLUMN end_date DROP NOT NULL",

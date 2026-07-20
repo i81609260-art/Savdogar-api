@@ -67,6 +67,8 @@ async def create_guest_booking(
         notes=notes,
         status="Yangi",
         source="sayt",
+        # Saytdan kelgan lead tur qaysi filialga tegishli bo'lsa, o'shanga tushadi.
+        branch_id=getattr(tour, "branch_id", None),
     )
     db.add(req)
     await db.commit()

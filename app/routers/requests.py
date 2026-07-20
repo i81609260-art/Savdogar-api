@@ -4,7 +4,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -15,6 +15,18 @@ from app.services.pricing_calculator import PricingCalculator
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/requests", tags=["Tour Requests"])
+
+
+def _branch_scope(current_user: User):
+    """Operator faqat o'z filiali va umumiy lead'larni ko'radi; admin — hammasini."""
+    from app.models.request import TourRequest
+
+    if current_user.role == UserRole.OPERATOR and current_user.branch_id:
+        return or_(
+            TourRequest.branch_id == current_user.branch_id,
+            TourRequest.branch_id.is_(None),
+        )
+    return None
 
 
 class LeadCreate(BaseModel):
@@ -108,6 +120,8 @@ async def create_request(
         budget=data.budget,
         status="Yangi",
         source=(data.source or "qolda"),
+        # Lead uni kiritgan xodimning filialiga biriktiriladi.
+        branch_id=current_user.branch_id,
         notes=data.notes,
     )
 
@@ -129,11 +143,12 @@ async def list_requests(
     if not current_user.company_id:
         raise HTTPException(status_code=400, detail="Kompaniya topilmadi")
 
-    result = await db.execute(
-        select(TourRequest)
-        .where(TourRequest.company_id == current_user.company_id)
-        .order_by(TourRequest.created_at.desc())
-    )
+    query = select(TourRequest).where(TourRequest.company_id == current_user.company_id)
+    scope = _branch_scope(current_user)
+    if scope is not None:
+        query = query.where(scope)
+
+    result = await db.execute(query.order_by(TourRequest.created_at.desc()))
     requests = result.scalars().all()
 
     return [
@@ -174,15 +189,16 @@ async def get_request(
     if not current_user.company_id:
         raise HTTPException(status_code=400, detail="Kompaniya topilmadi")
 
-    result = await db.execute(
-        select(TourRequest).where(
-            and_(
-                TourRequest.id == request_id,
-                TourRequest.company_id == current_user.company_id,
-            )
+    query = select(TourRequest).where(
+        and_(
+            TourRequest.id == request_id,
+            TourRequest.company_id == current_user.company_id,
         )
     )
-    request = result.scalar_one_or_none()
+    scope = _branch_scope(current_user)
+    if scope is not None:
+        query = query.where(scope)
+    request = (await db.execute(query)).scalar_one_or_none()
 
     if not request:
         raise HTTPException(status_code=404, detail="So'rov topilmadi")
@@ -224,15 +240,16 @@ async def update_request_status(
     if not current_user.company_id:
         raise HTTPException(status_code=400, detail="Kompaniya topilmadi")
 
-    result = await db.execute(
-        select(TourRequest).where(
-            and_(
-                TourRequest.id == request_id,
-                TourRequest.company_id == current_user.company_id,
-            )
+    query = select(TourRequest).where(
+        and_(
+            TourRequest.id == request_id,
+            TourRequest.company_id == current_user.company_id,
         )
     )
-    request = result.scalar_one_or_none()
+    scope = _branch_scope(current_user)
+    if scope is not None:
+        query = query.where(scope)
+    request = (await db.execute(query)).scalar_one_or_none()
 
     if not request:
         raise HTTPException(status_code=404, detail="So'rov topilmadi")
@@ -264,15 +281,16 @@ async def update_request(
     if not current_user.company_id:
         raise HTTPException(status_code=400, detail="Kompaniya topilmadi")
 
-    result = await db.execute(
-        select(TourRequest).where(
-            and_(
-                TourRequest.id == request_id,
-                TourRequest.company_id == current_user.company_id,
-            )
+    query = select(TourRequest).where(
+        and_(
+            TourRequest.id == request_id,
+            TourRequest.company_id == current_user.company_id,
         )
     )
-    request = result.scalar_one_or_none()
+    scope = _branch_scope(current_user)
+    if scope is not None:
+        query = query.where(scope)
+    request = (await db.execute(query)).scalar_one_or_none()
 
     if not request:
         raise HTTPException(status_code=404, detail="So'rov topilmadi")

@@ -8,7 +8,7 @@ from typing import List, Optional
 import aiofiles
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -61,6 +61,16 @@ class ConfigOut(BaseModel):
 
     ai_enabled: bool
     max_mb: int
+
+
+def _branch_scope(current_user: User):
+    """Operator faqat o'z filiali va umumiy yozuvlarni ko'radi; admin — hammasini."""
+    if current_user.role == UserRole.OPERATOR and current_user.branch_id:
+        return or_(
+            CallRecording.branch_id == current_user.branch_id,
+            CallRecording.branch_id.is_(None),
+        )
+    return None
 
 
 def _to_out(c: CallRecording) -> CallOut:
@@ -156,6 +166,8 @@ async def upload_call(
 
     call = CallRecording(
         company_id=current_user.company_id,
+        # Yozuv uni yuklagan xodimning filialiga biriktiriladi.
+        branch_id=current_user.branch_id,
         user_id=current_user.id,
         request_id=request_id,
         title=(title or "").strip() or None,
@@ -188,6 +200,9 @@ async def list_calls(
     )
     if request_id is not None:
         query = query.where(CallRecording.request_id == request_id)
+    scope = _branch_scope(current_user)
+    if scope is not None:
+        query = query.where(scope)
 
     result = await db.execute(query.order_by(CallRecording.created_at.desc()).limit(200))
     return [_to_out(c) for c in result.scalars().all()]
@@ -196,15 +211,16 @@ async def list_calls(
 async def _get_owned(
     db: AsyncSession, call_id: int, current_user: User
 ) -> CallRecording:
-    result = await db.execute(
-        select(CallRecording).where(
-            and_(
-                CallRecording.id == call_id,
-                CallRecording.company_id == current_user.company_id,
-            )
+    query = select(CallRecording).where(
+        and_(
+            CallRecording.id == call_id,
+            CallRecording.company_id == current_user.company_id,
         )
     )
-    call = result.scalar_one_or_none()
+    scope = _branch_scope(current_user)
+    if scope is not None:
+        query = query.where(scope)
+    call = (await db.execute(query)).scalar_one_or_none()
     if not call:
         raise HTTPException(status_code=404, detail="Yozuv topilmadi")
     return call
