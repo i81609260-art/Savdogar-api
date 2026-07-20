@@ -33,6 +33,7 @@ from app.routers import waitlist, reviews, telegram as telegram_router
 from app.routers import exports as exports_router
 from app.routers import tariff as tariff_router
 from app.routers import branches as branches_router
+from app.routers import calls as calls_router
 from app.routers import company_public
 from app.routers import chat as chat_router
 from app.routers.tour_groups import public_router as tour_groups_public_router
@@ -131,6 +132,27 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE tours ADD COLUMN currency VARCHAR(10) DEFAULT 'UZS'",
             "ALTER TABLE tours ADD COLUMN branch_id INTEGER",
             "ALTER TABLE tour_requests ADD COLUMN source VARCHAR(20) DEFAULT 'qolda'",
+            """CREATE TABLE IF NOT EXISTS call_recordings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id INTEGER NOT NULL REFERENCES companies(id),
+                user_id INTEGER,
+                request_id INTEGER,
+                title VARCHAR(255),
+                phone VARCHAR(50),
+                file_url VARCHAR(500) NOT NULL,
+                duration_sec INTEGER,
+                status VARCHAR(20) DEFAULT 'kutilmoqda',
+                error VARCHAR(500),
+                transcript TEXT,
+                summary TEXT,
+                sentiment VARCHAR(20),
+                score INTEGER,
+                destination VARCHAR(255),
+                topics VARCHAR(500),
+                next_step TEXT,
+                operator_notes TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+            )""",
             # Optional tour dates (Postgres; SQLite handled by startup.py rebuild)
             "ALTER TABLE tours ALTER COLUMN start_date DROP NOT NULL",
             "ALTER TABLE tours ALTER COLUMN end_date DROP NOT NULL",
@@ -254,6 +276,7 @@ app.include_router(reports.router)
 app.include_router(exports_router.router)
 app.include_router(tariff_router.router)
 app.include_router(branches_router.router)
+app.include_router(calls_router.router)
 app.include_router(admin.router)
 app.include_router(superadmin.router)
 app.include_router(notifications.router)

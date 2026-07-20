@@ -54,8 +54,13 @@ class Settings(BaseSettings):
         "https://savdogar-agentligi.vercel.app"
     )
 
+    # Qo'ng'iroq tahlili (Gemini audio'ni to'g'ridan-to'g'ri qabul qiladi).
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash"
+
     upload_dir: str = "uploads"
     max_upload_size_mb: int = 5
+    max_audio_upload_mb: int = 15
 
     @property
     def persistent_upload_dir(self) -> str:
