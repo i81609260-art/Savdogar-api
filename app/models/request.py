@@ -50,6 +50,9 @@ class TourRequest(Base):
         index=True,
     )
 
+    # Lead qayerdan keldi: sayt | bot | qongiroq | qolda
+    source: Mapped[str] = mapped_column(String(20), default="qolda", nullable=True)
+
     # Qo'shimcha
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 

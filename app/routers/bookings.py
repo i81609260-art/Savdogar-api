@@ -66,6 +66,7 @@ async def create_guest_booking(
         group_size=data.guests_count,
         notes=notes,
         status="Yangi",
+        source="sayt",
     )
     db.add(req)
     await db.commit()

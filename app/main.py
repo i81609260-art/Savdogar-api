@@ -130,6 +130,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE tours ADD COLUMN booking_type VARCHAR(20) DEFAULT 'group'",
             "ALTER TABLE tours ADD COLUMN currency VARCHAR(10) DEFAULT 'UZS'",
             "ALTER TABLE tours ADD COLUMN branch_id INTEGER",
+            "ALTER TABLE tour_requests ADD COLUMN source VARCHAR(20) DEFAULT 'qolda'",
             # Optional tour dates (Postgres; SQLite handled by startup.py rebuild)
             "ALTER TABLE tours ALTER COLUMN start_date DROP NOT NULL",
             "ALTER TABLE tours ALTER COLUMN end_date DROP NOT NULL",

@@ -41,6 +41,8 @@ class TourRequestCreate(BaseModel):
     tour_type: Optional[str] = None
     budget: Optional[float] = None
 
+    # sayt | bot | qongiroq | qolda
+    source: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -66,6 +68,7 @@ class TourRequestResponse(BaseModel):
     tour_type: Optional[str]
     budget: Optional[float]
     status: str
+    source: Optional[str] = "qolda"
     notes: Optional[str]
     created_at: str
     updated_at: str
@@ -104,6 +107,7 @@ async def create_request(
         tour_type=data.tour_type,
         budget=data.budget,
         status="Yangi",
+        source=(data.source or "qolda"),
         notes=data.notes,
     )
 
@@ -149,6 +153,7 @@ async def list_requests(
             tour_type=req.tour_type,
             budget=req.budget,
             status=req.status,
+            source=getattr(req, "source", None) or "qolda",
             notes=req.notes,
             created_at=req.created_at.isoformat(),
             updated_at=req.updated_at.isoformat(),
@@ -198,6 +203,7 @@ async def get_request(
         tour_type=request.tour_type,
         budget=request.budget,
         status=request.status,
+        source=getattr(request, "source", None) or "qolda",
         notes=request.notes,
         created_at=request.created_at.isoformat(),
         updated_at=request.updated_at.isoformat(),
