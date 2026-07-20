@@ -3,6 +3,9 @@
 Plans are defined in code (not the DB) so limits/features stay in one place.
 A company stores only its plan *key* in `companies.tariff`; the limits are
 resolved from here on every request, so a plan switch takes effect immediately.
+
+NOTE: the keys ("boshlangich" / "biznes" / "premium") are frozen — companies
+already store them. Only the display `name` changed to Start / Komfort / Biznes.
 """
 
 from typing import Any, Dict
@@ -10,15 +13,17 @@ from typing import Any, Dict
 DEFAULT_TARIFF = "boshlangich"
 
 # Ordered cheapest → most capable. `max_*` of None means unlimited.
-# `site_level`: "optional" (paid add-on) | "standard" | "professional".
+# `site_level`: "optional" (opt-in) | "standard" | "professional".
 TARIFFS: Dict[str, Dict[str, Any]] = {
     "boshlangich": {
         "key": "boshlangich",
-        "name": "Boshlang'ich",
+        "name": "Start",
         "price": 199990,
         "order": 1,
-        "tagline": "Kichik agentliklar uchun",
-        "max_tours": None,       # cheksiz tur
+        "audience": "Yangi yoki kichik tur firma",
+        "promise": "Lead va buyurtmani yo'qotmang",
+        "tagline": "Yangi yoki kichik tur firma",
+        "max_tours": None,
         "max_branches": 1,
         "site_level": "optional",
         "site_addon_price": 20000,
@@ -27,8 +32,8 @@ TARIFFS: Dict[str, Dict[str, Any]] = {
             "bookings": True,
             "unlimited_customers": True,
             "telegram_bot": True,
-            "reports": False,
-            "website": False,          # optional add-on (+20 000)
+            "reports": True,          # basic analytics
+            "website": False,         # opt-in landing (+20 000)
             "ai_chat": False,
             "white_label": False,
             "api_access": False,
@@ -37,10 +42,12 @@ TARIFFS: Dict[str, Dict[str, Any]] = {
     },
     "biznes": {
         "key": "biznes",
-        "name": "Biznes",
+        "name": "Komfort",
         "price": 499990,
         "order": 2,
-        "tagline": "O'sayotgan firmalar uchun",
+        "audience": "O'sayotgan kompaniya",
+        "promise": "Sotuvni tizimlashtiring, filiallarni ushlang",
+        "tagline": "O'sayotgan kompaniya",
         "max_tours": 300,
         "max_branches": 3,
         "site_level": "standard",
@@ -59,10 +66,12 @@ TARIFFS: Dict[str, Dict[str, Any]] = {
     },
     "premium": {
         "key": "premium",
-        "name": "Premium",
+        "name": "Biznes",
         "price": 999990,
         "order": 3,
-        "tagline": "Cheksiz — yetakchi firmalar uchun",
+        "audience": "Katta yoki ko'p filialli firma",
+        "promise": "Avtomatizatsiya, nazorat, o'sish",
+        "tagline": "Katta yoki ko'p filialli firma",
         "max_tours": None,       # unlimited
         "max_branches": None,    # unlimited
         "site_level": "professional",
