@@ -104,6 +104,9 @@ async def switch_tariff(
     DB; the client should sign the user out so a fresh login picks them up."""
     if data.tariff not in TARIFFS:
         raise HTTPException(status_code=400, detail="Noma'lum tarif")
+    # Maxsus rejalarni (masalan "cheksiz") admin o'ziga o'zi bera olmaydi.
+    if not get_tariff(data.tariff).get("purchasable", True):
+        raise HTTPException(status_code=403, detail="Bu reja tanlanmaydi")
     if not current_user.company_id:
         raise HTTPException(status_code=400, detail="Kompaniyaga biriktirilmagansiz")
 

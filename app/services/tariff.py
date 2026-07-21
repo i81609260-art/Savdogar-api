@@ -15,6 +15,35 @@ DEFAULT_TARIFF = "boshlangich"
 # Ordered cheapest → most capable. `max_*` of None means unlimited.
 # `site_level`: "optional" (opt-in) | "standard" | "professional".
 TARIFFS: Dict[str, Dict[str, Any]] = {
+    # Maxsus reja — OpenTour kabi flagman kompaniyalar uchun: tekin, cheksiz,
+    # hamma imkoniyat ochiq. Sotib olib bo'lmaydi (`purchasable=False`), shuning
+    # uchun oddiy firmalarga tarif ro'yxatida ko'rinmaydi.
+    "cheksiz": {
+        "key": "cheksiz",
+        "name": "Cheksiz",
+        "price": 0,
+        "price_usd": None,
+        "order": 0,
+        "purchasable": False,
+        "audience": "Maxsus / hamkor kompaniya",
+        "promise": "Hamma imkoniyat ochiq — tekin",
+        "tagline": "Maxsus cheksiz reja",
+        "max_tours": None,
+        "max_branches": None,
+        "site_level": "professional",
+        "features": {
+            "crm": True,
+            "bookings": True,
+            "unlimited_customers": True,
+            "telegram_bot": True,
+            "reports": True,
+            "website": True,
+            "ai_chat": True,
+            "white_label": True,
+            "api_access": True,
+            "priority_support": True,
+        },
+    },
     "boshlangich": {
         "key": "boshlangich",
         "name": "Start",
@@ -103,8 +132,14 @@ def get_tariff(key: str | None) -> Dict[str, Any]:
 
 
 def tariff_list() -> list[Dict[str, Any]]:
-    """All plans, cheapest first."""
-    return sorted(TARIFFS.values(), key=lambda t: t["order"])
+    """Sotib olish mumkin bo'lgan rejalar, arzonidan boshlab.
+
+    Maxsus rejalar (`purchasable=False`, masalan "cheksiz") ro'yxatga kirmaydi.
+    """
+    return sorted(
+        (t for t in TARIFFS.values() if t.get("purchasable", True)),
+        key=lambda t: t["order"],
+    )
 
 
 def within_tour_limit(tariff_key: str | None, current_tour_count: int) -> bool:
