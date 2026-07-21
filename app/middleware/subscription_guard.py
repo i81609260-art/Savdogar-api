@@ -84,7 +84,7 @@ class SubscriptionGuardMiddleware(BaseHTTPMiddleware):
                 return JSONResponse(
                     status_code=402,
                     content={
-                        "detail": "Obuna to'lovi muddati o'tgan. Iltimos, to'lovni amalga oshiring.",
+                        "detail": "Obuna tolovi muddati otgan. Iltimos, tolovni amalga oshiring.",
                         "billing": "overdue",
                     },
                 )
