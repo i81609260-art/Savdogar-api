@@ -19,6 +19,7 @@ from app.models.company import Company
 from app.models.tariff_change import TariffChange
 from app.models.tour import Tour
 from app.models.user import User, UserRole
+from app.services.billing import advance_paid_until, compute_billing
 from app.services.tariff import DEFAULT_TARIFF, TARIFFS, get_tariff, tariff_list
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,23 @@ async def get_current(
         "tariff": tariff,
         "usage": {"tours": tours_used, "operators": operators_used},
     }
+
+
+@router.get("/billing", summary="To'lov holati va eslatma")
+async def get_billing(
+    current_user: User = Depends(role_required(UserRole.ADMIN, UserRole.OPERATOR)),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Keyingi to'lov sanasi va ogohlantirish holati (3/2/1 kun, bugun, muddat o'tgan)."""
+    if not current_user.company_id:
+        raise HTTPException(status_code=400, detail="Kompaniyaga biriktirilmagansiz")
+    company = (
+        await db.execute(select(Company).where(Company.id == current_user.company_id))
+    ).scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Kompaniya topilmadi")
+    plan = get_tariff(getattr(company, "tariff", DEFAULT_TARIFF))
+    return compute_billing(company, plan)
 
 
 @router.post("/switch", summary="Boshqa tarifga o'tish")
@@ -212,6 +230,10 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)) -
             ).scalar_one_or_none()
             if company:
                 await _apply_tariff(db, company, tariff)
+                # To'lov qabul qilindi — keyingi to'lov sanasini bir oyga suramiz.
+                company.paid_until = advance_paid_until(company)
+                db.add(company)
+                await db.commit()
                 logger.info("Stripe: kompaniya %s -> %s tarif", company_id, tariff)
 
     return {"received": True}

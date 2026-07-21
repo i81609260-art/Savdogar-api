@@ -100,6 +100,7 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE companies ADD COLUMN website_customization TEXT",
             "ALTER TABLE companies ADD COLUMN site_enabled BOOLEAN DEFAULT TRUE",
             "ALTER TABLE companies ADD COLUMN tariff VARCHAR(30) DEFAULT 'boshlangich'",
+            "ALTER TABLE companies ADD COLUMN paid_until TIMESTAMP",
             # OpenTour is the flagship aggregator — special free unlimited plan.
             "UPDATE companies SET tariff = 'cheksiz' WHERE slug IN ('open-tour', 'opentour')",
             "ALTER TABLE users ADD COLUMN branch_id INTEGER",

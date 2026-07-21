@@ -60,6 +60,11 @@ class Company(Base):
     site_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=True)
     # Subscription plan key: boshlangich | biznes | premium (see services/tariff.py).
     tariff: Mapped[str] = mapped_column(String(30), default="boshlangich", nullable=True)
+    # Obuna qaysi sanagacha to'langan. Bo'sh bo'lsa — created_at asosida
+    # birinchi to'lov sanasi hisoblanadi (services/billing.py).
+    paid_until: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
