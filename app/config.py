@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.0-flash"
 
+    # Stripe — xalqaro obuna to'lovi (Visa/Mastercard). Bo'sh bo'lsa o'chirilgan.
+    stripe_secret_key: str = ""
+    stripe_publishable_key: str = ""
+    stripe_webhook_secret: str = ""
+    # Stripe to'lovdan keyin qaytadigan sayt manzili.
+    frontend_url: str = "https://turify.xyz"
+
     upload_dir: str = "uploads"
     max_upload_size_mb: int = 5
     max_audio_upload_mb: int = 15
