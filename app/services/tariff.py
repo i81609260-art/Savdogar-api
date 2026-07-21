@@ -21,12 +21,14 @@ TARIFFS: Dict[str, Dict[str, Any]] = {
     "cheksiz": {
         "key": "cheksiz",
         "name": "Cheksiz",
-        "price": 0,
+        # Ko'rsatiladigan narx; sotilmaydi va to'lovdan ozod (purchasable=False),
+        # shuning uchun bu faqat panelda ko'rinadi, hech qachon undirilmaydi.
+        "price": 200000,
         "price_usd": None,
         "order": 0,
         "purchasable": False,
         "audience": "Maxsus / hamkor kompaniya",
-        "promise": "Hamma imkoniyat ochiq — tekin",
+        "promise": "Hamma imkoniyat ochiq — cheksiz",
         "tagline": "Maxsus cheksiz reja",
         "max_tours": None,
         "max_branches": None,
