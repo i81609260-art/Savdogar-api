@@ -258,6 +258,13 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Obuna to'lovi o'tib ketgan kompaniyalarni yozuv so'rovlaridan bloklaydi.
+# CORS'dan OLDIN qo'shiladi, shunda CORS tashqarida qolib 402 javobga ham
+# sarlavhalarni qo'shadi.
+from app.middleware.subscription_guard import SubscriptionGuardMiddleware  # noqa: E402
+
+app.add_middleware(SubscriptionGuardMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
