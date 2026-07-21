@@ -161,7 +161,8 @@ async def create_checkout(
                     "price_data": {
                         "currency": "usd",
                         "product_data": {"name": f"Turify — {plan['name']}"},
-                        "unit_amount": int(price_usd) * 100,
+                        # Dollar narxini tiyinga (cent) aylantiramiz — kasrni saqlaydi.
+                        "unit_amount": round(float(price_usd) * 100),
                         "recurring": {"interval": "month"},
                     },
                     "quantity": 1,

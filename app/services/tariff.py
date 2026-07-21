@@ -19,9 +19,10 @@ TARIFFS: Dict[str, Dict[str, Any]] = {
         "key": "boshlangich",
         "name": "Start",
         "price": 199990,
-        # Stripe (xalqaro) uchun oylik dollar narxi. So'm narxidan mustaqil —
-        # o'zgartirmoqchi bo'lsangiz shu yerni tahrirlang.
-        "price_usd": 16,
+        # Stripe (xalqaro) uchun oylik dollar narxi. MB kursi bo'yicha
+        # so'm narxidan hisoblangan (1 USD ≈ 11 960 so'm) — kurs o'zgarsa
+        # shu yerni yangilang.
+        "price_usd": 16.72,
         "order": 1,
         "audience": "Yangi yoki kichik tur firma",
         "promise": "Lead va buyurtmani yo'qotmang",
@@ -47,7 +48,7 @@ TARIFFS: Dict[str, Dict[str, Any]] = {
         "key": "biznes",
         "name": "Komfort",
         "price": 499990,
-        "price_usd": 39,
+        "price_usd": 41.80,
         "order": 2,
         "audience": "O'sayotgan kompaniya",
         "promise": "Sotuvni tizimlashtiring, filiallarni ushlang",
@@ -72,7 +73,7 @@ TARIFFS: Dict[str, Dict[str, Any]] = {
         "key": "premium",
         "name": "Biznes",
         "price": 999990,
-        "price_usd": 79,
+        "price_usd": 83.61,
         "order": 3,
         "audience": "Katta yoki ko'p filialli firma",
         "promise": "Avtomatizatsiya, nazorat, o'sish",
