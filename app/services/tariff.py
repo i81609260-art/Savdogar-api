@@ -50,9 +50,9 @@ TARIFFS: Dict[str, Dict[str, Any]] = {
         "key": "boshlangich",
         "name": "Start",
         "price": 199990,
-        # Stripe (xalqaro) uchun oylik dollar narxi. MB kursi bo'yicha
-        # so'm narxidan hisoblangan (1 USD ≈ 11 960 so'm) — kurs o'zgarsa
-        # shu yerni yangilang.
+        # Oylik dollar narxi — hozircha faqat ma'lumot uchun (karta to'lovi
+        # o'chirilgan). MB kursi bo'yicha so'm narxidan hisoblangan
+        # (1 USD ≈ 11 960 so'm) — kurs o'zgarsa shu yerni yangilang.
         "price_usd": 16.72,
         "order": 1,
         "audience": "Yangi yoki kichik tur firma",

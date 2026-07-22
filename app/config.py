@@ -47,6 +47,9 @@ class Settings(BaseSettings):
 
     # Telegram bot
     telegram_bot_token: str = ""
+    # Platforma egasiga xabar boradigan chat ID(lar), vergul bilan.
+    # Bo'sh bo'lsa tarif o'zgarishi haqidagi xabarnoma o'chiq turadi.
+    telegram_admin_chat_ids: str = ""
     cors_origins: str = (
         "http://localhost:3000,"
         "https://savdogar-sable.vercel.app,"
@@ -58,11 +61,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.0-flash"
 
-    # Stripe — xalqaro obuna to'lovi (Visa/Mastercard). Bo'sh bo'lsa o'chirilgan.
-    stripe_secret_key: str = ""
-    stripe_publishable_key: str = ""
-    stripe_webhook_secret: str = ""
-    # Stripe to'lovdan keyin qaytadigan sayt manzili.
+    # Ommaviy sayt manzili (email/telegram havolalarida ishlatiladi).
     frontend_url: str = "https://turify.xyz"
 
     upload_dir: str = "uploads"

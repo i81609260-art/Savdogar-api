@@ -1,12 +1,9 @@
 """Subscription plan (tariff) API — view current plan, switch, and audit log."""
 
-import asyncio
-import json
 import logging
 from typing import Any, Optional
 
-import stripe
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +16,8 @@ from app.models.company import Company
 from app.models.tariff_change import TariffChange
 from app.models.tour import Tour
 from app.models.user import User, UserRole
-from app.services.billing import advance_paid_until, compute_billing
+from app.services.admin_notify import notify_tariff_change
+from app.services.billing import compute_billing
 from app.services.tariff import DEFAULT_TARIFF, TARIFFS, get_tariff, tariff_list
 
 logger = logging.getLogger(__name__)
@@ -31,10 +29,17 @@ class SwitchRequest(BaseModel):
     tariff: str
 
 
-async def _apply_tariff(db: AsyncSession, company: Company, new_tariff: str) -> bool:
+async def _apply_tariff(
+    db: AsyncSession,
+    company: Company,
+    new_tariff: str,
+    actor: Optional[User] = None,
+) -> bool:
     """Kompaniya tarifini o'zgartirib, o'zgarishni jurnalga yozadi.
 
-    Local switch ham, Stripe to'lovi ham shu yagona nuqtadan o'tadi.
+    Tarif o'zgarishining yagona nuqtasi — superadminga boradigan Telegram
+    xabarnomasi ham shu yerdan chiqadi, shuning uchun hech bir o'zgarish
+    e'tibordan chetda qolmaydi.
     """
     old_tariff = getattr(company, "tariff", DEFAULT_TARIFF)
     if old_tariff == new_tariff:
@@ -50,6 +55,8 @@ async def _apply_tariff(db: AsyncSession, company: Company, new_tariff: str) -> 
         )
     )
     await db.commit()
+    # Xabar yuborilmasa ham o'zgarish saqlangan — notify o'zi xatoni yutadi.
+    await notify_tariff_change(company, old_tariff, new_tariff, actor)
     return True
 
 
@@ -134,109 +141,8 @@ async def switch_tariff(
     if not company:
         raise HTTPException(status_code=404, detail="Kompaniya topilmadi")
 
-    changed = await _apply_tariff(db, company, data.tariff)
+    changed = await _apply_tariff(db, company, data.tariff, actor=current_user)
     return {"tariff": get_tariff(data.tariff), "changed": changed}
-
-
-# ---------------------------------------------------------------------------
-# Stripe — xalqaro obuna to'lovi (Visa/Mastercard)
-# ---------------------------------------------------------------------------
-
-
-@router.get("/payment-config", summary="To'lov sozlamalari")
-async def payment_config() -> dict:
-    """Frontend Stripe tugmasini ko'rsatishi kerakmi."""
-    return {"stripe_enabled": bool(settings.stripe_secret_key)}
-
-
-@router.post("/checkout", summary="Stripe orqali tarifni sotib olish")
-async def create_checkout(
-    data: SwitchRequest,
-    current_user: User = Depends(role_required(UserRole.ADMIN)),
-    db: AsyncSession = Depends(get_db),
-) -> dict:
-    """Tanlangan tarif uchun Stripe Checkout sessiyasini yaratadi.
-
-    Tarif shu yerda o'zgarmaydi — u faqat webhook to'lov tasdiqlangach yoqiladi.
-    """
-    if not settings.stripe_secret_key:
-        raise HTTPException(status_code=400, detail="Stripe sozlanmagan")
-    if data.tariff not in TARIFFS:
-        raise HTTPException(status_code=400, detail="Noma'lum tarif")
-    if not current_user.company_id:
-        raise HTTPException(status_code=400, detail="Kompaniyaga biriktirilmagansiz")
-
-    plan = get_tariff(data.tariff)
-    price_usd = plan.get("price_usd")
-    if not price_usd:
-        raise HTTPException(status_code=400, detail="Bu tarif kartada mavjud emas")
-
-    stripe.api_key = settings.stripe_secret_key
-    base = settings.frontend_url.rstrip("/")
-    try:
-        session = await asyncio.to_thread(
-            stripe.checkout.Session.create,
-            mode="subscription",
-            line_items=[
-                {
-                    "price_data": {
-                        "currency": "usd",
-                        "product_data": {"name": f"Turify — {plan['name']}"},
-                        # Dollar narxini tiyinga (cent) aylantiramiz — kasrni saqlaydi.
-                        "unit_amount": round(float(price_usd) * 100),
-                        "recurring": {"interval": "month"},
-                    },
-                    "quantity": 1,
-                }
-            ],
-            client_reference_id=str(current_user.company_id),
-            metadata={"company_id": str(current_user.company_id), "tariff": data.tariff},
-            success_url=f"{base}/admin/tariff?paid=1",
-            cancel_url=f"{base}/admin/tariff?canceled=1",
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("Stripe checkout yaratilmadi")
-        raise HTTPException(status_code=502, detail="To'lov sahifasi yaratilmadi") from exc
-
-    return {"url": session.url}
-
-
-@router.post("/stripe/webhook", summary="Stripe webhook (ichki)")
-async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)) -> dict:
-    """To'lov tasdiqlangach tarifni yoqadi. Stripe imzosi tekshiriladi."""
-    if not settings.stripe_webhook_secret:
-        raise HTTPException(status_code=400, detail="Webhook sozlanmagan")
-
-    payload = await request.body()
-    sig = request.headers.get("stripe-signature", "")
-    try:
-        stripe.Webhook.construct_event(payload, sig, settings.stripe_webhook_secret)
-    except Exception as exc:  # noqa: BLE001 — imzo yaroqsiz yoki payload buzilgan
-        logger.warning("Stripe webhook imzosi yaroqsiz: %s", exc)
-        raise HTTPException(status_code=400, detail="Yaroqsiz imzo") from exc
-
-    # İmzo tasdiqlandi — endi xom payload'ni oddiy dict sifatida o'qiymiz
-    # (Stripe obyektlari .get()ni qo'llab-quvvatlamaydi).
-    event = json.loads(payload)
-
-    if event.get("type") == "checkout.session.completed":
-        obj = event.get("data", {}).get("object", {})
-        meta = obj.get("metadata") or {}
-        company_id = meta.get("company_id") or obj.get("client_reference_id")
-        tariff = meta.get("tariff")
-        if company_id and tariff in TARIFFS:
-            company = (
-                await db.execute(select(Company).where(Company.id == int(company_id)))
-            ).scalar_one_or_none()
-            if company:
-                await _apply_tariff(db, company, tariff)
-                # To'lov qabul qilindi — keyingi to'lov sanasini bir oyga suramiz.
-                company.paid_until = advance_paid_until(company)
-                db.add(company)
-                await db.commit()
-                logger.info("Stripe: kompaniya %s -> %s tarif", company_id, tariff)
-
-    return {"received": True}
 
 
 @router.get("/changes", summary="Tarif o'zgarishlari (superadmin)")
