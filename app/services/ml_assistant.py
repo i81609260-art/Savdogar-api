@@ -45,6 +45,9 @@ INTENT_TRAINING: list[tuple[str, str]] = [
     # help
     ("nima qila olasan", "help"), ("yordam", "help"), ("qanday ishlaysan", "help"),
     ("nima qilish mumkin", "help"), ("imkoniyatlaring", "help"), ("komandalar", "help"),
+    ("nimalarga yordam berasan", "help"), ("qanday yordam berasan", "help"),
+    ("vazifang nima", "help"), ("nima ish qilasan", "help"),
+    ("qanaqa buyruqlar bor", "help"), ("qanday komandalar bor", "help"),
     # report / analytics
     ("xisobot", "report"), ("hisobot ber", "report"), ("statistika", "report"),
     ("umumiy korsatkich", "report"), ("qanday ketyapti", "report"),
@@ -87,6 +90,19 @@ INTENT_TRAINING: list[tuple[str, str]] = [
     ("turni faollashtir", "set_active"), ("turni yoq", "set_active"),
     ("turni nofaol qil", "set_active"), ("turni yashir", "set_active"),
     ("turni faol qil", "set_active"), ("turni ochib qoy", "set_active"),
+    # unknown / notegishli — firma ishiga aloqasi yoq (Tella AI rad etadi)
+    ("bugun ob-havo qanday", "unknown"), ("ertaga yomgir yogadimi", "unknown"),
+    ("python kod yoz", "unknown"), ("kod yozib ber", "unknown"),
+    ("dastur yoz", "unknown"), ("sayt yasab ber", "unknown"),
+    ("prezident kim", "unknown"), ("poytaxt qayer", "unknown"),
+    ("2 qoshuv 2 nechchi", "unknown"), ("matematika masala yech", "unknown"),
+    ("hazil ayt", "unknown"), ("sher yoz", "unknown"),
+    ("qanday odamsan", "unknown"), ("seni kim yaratgan", "unknown"),
+    ("futbol natijalari", "unknown"), ("yangiliklar nima", "unknown"),
+    ("retsept ber", "unknown"), ("kino tavsiya qil", "unknown"),
+    ("tarjima qilib ber", "unknown"), ("ingliz tili organaman", "unknown"),
+    ("qanaqa telefon olay", "unknown"), ("salomatlik maslahat ber", "unknown"),
+    ("kripto valyuta narxi", "unknown"), ("dollar kursi qancha", "unknown"),
 ]
 
 _CONF_THRESHOLD = 0.18  # past ishonchda -> unknown
@@ -94,7 +110,10 @@ _CONF_THRESHOLD = 0.18  # past ishonchda -> unknown
 # Kritik intentlar uchun kalit soʻz tayanchi (kichik dataset ishonchsizligiga qarshi).
 _KEYWORDS: list[tuple[str, str]] = [
     ("qosh", "create_tour"), ("yarat", "create_tour"),
-    ("narx", "update_price"),
+    # "narx" oʻzi juda keng (masalan "kripto narxi") — narx oʻzgartirishni
+    # klassifikatorga qoldiramiz, faqat aniq iboralarni tayanch qilamiz.
+    ("narxni ozgartir", "update_price"), ("narxini ozgartir", "update_price"),
+    ("narxini yangila", "update_price"), ("narx ozgartir", "update_price"),
     ("faollashtir", "set_active"), ("nofaol", "set_active"), ("yashir", "set_active"),
     ("xisobot", "report"), ("hisobot", "report"), ("daromad", "report"), ("statistika", "report"),
     ("royxat", "list_tours"),
@@ -500,13 +519,24 @@ async def _run_read_intent(db: AsyncSession, cid: int, intent: str) -> str:
     return "Tushunmadim."
 
 
-_HELP = (
-    "Men firmangiz yordamchisiman. Mana nima soray olasiz:\n"
+_CAPABILITIES = (
     "- Xisobot: 'bu oy qancha daromad', 'yetishmovchiliklar'\n"
     "- Turlar: 'nechta tur bor', 'turlar royxati'\n"
     "- Mijozlar: 'nechta mijoz', 'oxirgi bronlar'\n"
-    "- Amal: 'yangi tur qosh', 'narxni ozgartir', 'turni nofaol qil'\n"
-    "Kerakli malumotni oʻzim ketma-ket sorayman."
+    "- Amal: 'yangi tur qosh', 'narxni ozgartir', 'turni nofaol qil'"
+)
+
+_HELP = (
+    "Men Tella AI — tur firmangiz yordamchisiman. Mana nima soray olasiz:\n"
+    + _CAPABILITIES
+    + "\nKerakli malumotni oʻzim ketma-ket sorayman."
+)
+
+# Notegishli (firma ishiga aloqasiz) savolga aniq rad javobi.
+_OFFTOPIC = (
+    "Kechirasiz, men Tella AI — faqat tur firmangiz ishlariga yordam beraman "
+    "(turlar, mijozlar, bronlar, xisobot). Boshqa mavzular yoki umumiy "
+    "savollarga javob bermayman.\n\nMana nima soray olasiz:\n" + _CAPABILITIES
 )
 
 
@@ -514,9 +544,12 @@ async def _handle_no_pending(db: AsyncSession, cid: int, message: str) -> dict:
     intent, conf = _store().predict(message)
 
     if intent == "greeting":
-        return _reply("Salom! Firmangiz boyicha savol bering yoki buyruq bering. Masalan: 'nechta tur bor' yoki 'yangi tur qosh'.")
-    if intent == "help" or intent == "unknown":
+        return _reply("Salom! Men Tella AI, firmangiz yordamchisiman. Masalan: 'nechta tur bor' yoki 'yangi tur qosh'.")
+    if intent == "help":
         return _reply(_HELP)
+    if intent == "unknown":
+        # Firma ishiga aloqasiz savol — qatʼiy rad javobi.
+        return _reply(_OFFTOPIC)
 
     # Oʻqish intentlari — javob berilgach ishonchli boʻlsa oʻrganamiz.
     if intent == "report":
