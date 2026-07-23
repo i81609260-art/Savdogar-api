@@ -52,6 +52,7 @@ from app.routers import (
     membership_bookings,
     guest_bookings,
     track as track_router,
+    assistant as assistant_router,
 )
 
 settings = get_settings()
@@ -299,6 +300,7 @@ app.include_router(crm.router)
 app.include_router(requests_router.router)
 app.include_router(reports.router)
 app.include_router(track_router.router)
+app.include_router(assistant_router.router)
 app.include_router(exports_router.router)
 app.include_router(tariff_router.router)
 app.include_router(branches_router.router)
