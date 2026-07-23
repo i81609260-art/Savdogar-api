@@ -147,6 +147,15 @@ async def lifespan(app: FastAPI):
             )""",
             "CREATE INDEX IF NOT EXISTS ix_site_visits_created_at ON site_visits (created_at)",
             "CREATE INDEX IF NOT EXISTS ix_site_visits_company_id ON site_visits (company_id)",
+            # ML yordamchi oʻrgangan misollar (oʻz-oʻzini kuchaytirish)
+            """CREATE TABLE IF NOT EXISTS assistant_examples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id INTEGER REFERENCES companies(id),
+                text VARCHAR(500) NOT NULL,
+                intent VARCHAR(40) NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_assistant_examples_intent ON assistant_examples (intent)",
             """CREATE TABLE IF NOT EXISTS call_recordings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 company_id INTEGER NOT NULL REFERENCES companies(id),

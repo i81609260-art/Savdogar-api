@@ -1,5 +1,6 @@
 """ORM models package."""
 
+from app.models.assistant_example import AssistantExample
 from app.models.booking import Booking, BookingStatus
 from app.models.guest_review import GuestReview
 from app.models.integration import (
@@ -19,6 +20,7 @@ from app.models.tour_group import TourGroup
 from app.models.user import RefreshTokenBlacklist, User, UserRole
 
 __all__ = [
+    "AssistantExample",
     "Booking",
     "BookingStatus",
     "GuestReview",

@@ -14,6 +14,7 @@ Tashqi API yoʻq, kalit kerak emas — hammasi shu serverda ishlaydi. Holat
 
 import logging
 import re
+import time
 from datetime import date, datetime
 from typing import Any, Optional
 
@@ -22,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 
+from app.models.assistant_example import AssistantExample
 from app.models.booking import Booking, BookingStatus
 from app.models.company import Company
 from app.models.tour import Tour
@@ -103,15 +105,39 @@ _KEYWORDS: list[tuple[str, str]] = [
 ]
 
 
-class _IntentModel:
-    """TF-IDF + LogisticRegression intent klassifikatori (singleton)."""
+# Oʻrgangan misollarni DB dan qayta yuklash oraligʻi (worker'lar orasida tarqalishi uchun).
+_RELOAD_SECONDS = 20
+# Faqat shu ishonchdan yuqori sorovlardan oʻrganamiz (xato mustahkamlanmasin).
+_LEARN_CONF = 0.40
+
+
+class _LearningStore:
+    """Oʻz-oʻzini kuchaytiruvchi intent klassifikatori.
+
+    Boshlangʻich dataset (INTENT_TRAINING) + DB dagi oʻrgangan misollar ustida
+    oʻqiydi. Yangi (takrorlanmagan) ibora oʻrganilganda model qayta quriladi,
+    shuning uchun ishlatilgani sari kuchayadi. Boshlangʻich dataset doim
+    saqlanadi — model undan uzoqlashib ketmaydi (drift'ga qarshi langar).
+    """
 
     def __init__(self) -> None:
-        self.vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 4), min_df=1)
-        self.clf = LogisticRegression(max_iter=1000)
-        texts = [t for t, _ in INTENT_TRAINING]
-        labels = [l for _, l in INTENT_TRAINING]
-        self.clf.fit(self.vec.fit_transform(texts), labels)
+        self.seed_norm = {_norm(t) for t, _ in INTENT_TRAINING}
+        self.learned: list[tuple[str, str]] = []      # (norm_text, intent)
+        self.learned_norm: set[str] = set()
+        self.vec: Optional[TfidfVectorizer] = None
+        self.clf: Optional[LogisticRegression] = None
+        self.last_reload = 0.0
+        self._build()
+
+    def _build(self) -> None:
+        data = [(_norm(t), l) for t, l in INTENT_TRAINING] + self.learned
+        texts = [t for t, _ in data]
+        labels = [l for _, l in data]
+        vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 4), min_df=1)
+        X = vec.fit_transform(texts)
+        clf = LogisticRegression(max_iter=1000)
+        clf.fit(X, labels)
+        self.vec, self.clf = vec, clf
 
     def predict(self, text: str) -> tuple[str, float]:
         t = _norm(text)
@@ -128,15 +154,53 @@ class _IntentModel:
             return "unknown", conf
         return intent, conf
 
+    async def ensure_fresh(self, db: AsyncSession) -> None:
+        """Vaqti-vaqti bilan DB dan yangi misollarni yuklab, modelni yangilaydi."""
+        now = time.monotonic()
+        if self.clf is not None and (now - self.last_reload) < _RELOAD_SECONDS:
+            return
+        self.last_reload = now
+        total = (await db.execute(select(func.count(AssistantExample.id)))).scalar() or 0
+        if self.clf is not None and total == len(self.learned):
+            return  # oʻzgarish yoʻq
+        rows = (await db.execute(select(AssistantExample.text, AssistantExample.intent))).all()
+        seen: set[str] = set()
+        learned: list[tuple[str, str]] = []
+        for text, intent in rows:
+            nt = _norm(text)
+            if nt in seen or nt in self.seed_norm:
+                continue
+            seen.add(nt)
+            learned.append((nt, intent))
+        self.learned = learned
+        self.learned_norm = seen
+        self._build()
 
-_MODEL: Optional[_IntentModel] = None
+    async def learn(self, db: AsyncSession, company_id: Optional[int], text: str, intent: str) -> None:
+        """Yangi (matn -> intent) misolini saqlaydi va modelni qayta quradi.
+
+        Faqat takrorlanmagan, real intentli ibora oʻrganiladi.
+        """
+        if not intent or intent in ("greeting", "help", "unknown"):
+            return
+        nt = _norm(text)
+        if not nt or nt in self.seed_norm or nt in self.learned_norm:
+            return
+        db.add(AssistantExample(company_id=company_id, text=text[:500], intent=intent))
+        await db.commit()
+        self.learned.append((nt, intent))
+        self.learned_norm.add(nt)
+        self._build()
 
 
-def _model() -> _IntentModel:
-    global _MODEL
-    if _MODEL is None:
-        _MODEL = _IntentModel()
-    return _MODEL
+_STORE: Optional[_LearningStore] = None
+
+
+def _store() -> _LearningStore:
+    global _STORE
+    if _STORE is None:
+        _STORE = _LearningStore()
+    return _STORE
 
 
 def is_configured() -> bool:
@@ -447,27 +511,35 @@ _HELP = (
 
 
 async def _handle_no_pending(db: AsyncSession, cid: int, message: str) -> dict:
-    intent, conf = _model().predict(message)
+    intent, conf = _store().predict(message)
 
     if intent == "greeting":
         return _reply("Salom! Firmangiz boyicha savol bering yoki buyruq bering. Masalan: 'nechta tur bor' yoki 'yangi tur qosh'.")
     if intent == "help" or intent == "unknown":
         return _reply(_HELP)
-    if intent == "report":
-        return _reply(await _run_report(db, cid))
-    if intent in ("count_tours", "list_tours", "count_customers", "recent_bookings", "get_plan"):
-        return _reply(await _run_read_intent(db, cid, intent))
 
+    # Oʻqish intentlari — javob berilgach ishonchli boʻlsa oʻrganamiz.
+    if intent == "report":
+        reply = await _run_report(db, cid)
+        if conf >= _LEARN_CONF:
+            await _store().learn(db, cid, message, intent)
+        return _reply(reply)
+    if intent in ("count_tours", "list_tours", "count_customers", "recent_bookings", "get_plan"):
+        reply = await _run_read_intent(db, cid, intent)
+        if conf >= _LEARN_CONF:
+            await _store().learn(db, cid, message, intent)
+        return _reply(reply)
+
+    # Yozuvchi intentlar — asl buyruqni saqlaymiz, tasdiqlangach oʻrganamiz.
     if intent == "create_tour":
-        slots: dict = {}
+        slots: dict = {"_trigger": message}
         _extract_create_slots(message, slots)
-        # Nom berilmagan boʻlsa, shahardan taxminiy nom yasaymiz.
         if not slots.get("title") and slots.get("city"):
             slots["title"] = f"{slots['city']} sayohati"
         return _advance_create(slots)
 
     if intent == "update_price":
-        slots = {}
+        slots = {"_trigger": message}
         price = parse_amount(message)
         if price:
             slots["price"] = price
@@ -476,7 +548,8 @@ async def _handle_no_pending(db: AsyncSession, cid: int, message: str) -> dict:
 
     if intent == "set_active":
         t = _norm(message)
-        slots = {"is_active": not any(w in t for w in ("nofaol", "yashir", "ochir", "yoq"))}
+        slots = {"_trigger": message,
+                 "is_active": not any(w in t for w in ("nofaol", "yashir", "ochir", "yoq"))}
         await _resolve_and_store(db, cid, slots, message)
         return _advance_set_active(slots)
 
@@ -572,16 +645,21 @@ async def _handle_pending(db: AsyncSession, cid: int, message: str, pending: dic
 async def _execute(db: AsyncSession, cid: int, intent: str, slots: dict) -> dict:
     try:
         if intent == "create_tour":
-            return await _do_create(db, cid, slots)
-        if intent == "update_price":
-            return await _do_update_price(db, cid, slots)
-        if intent == "set_active":
-            return await _do_set_active(db, cid, slots)
+            res = await _do_create(db, cid, slots)
+        elif intent == "update_price":
+            res = await _do_update_price(db, cid, slots)
+        elif intent == "set_active":
+            res = await _do_set_active(db, cid, slots)
+        else:
+            return _reply("Tushunmadim.")
     except Exception:  # noqa: BLE001 — amal xatosi suhbatni buzmasin
         logger.exception("ML assistant amal xatosi: %s", intent)
         await db.rollback()
         return _reply("Amalni bajarishda xatolik boldi. Qaytadan urinib koring.")
-    return _reply("Tushunmadim.")
+    # Amal muvaffaqiyatli bajarildi — asl buyruqni oʻrganamiz (tasdiqlangan misol).
+    if res.get("actions"):
+        await _store().learn(db, cid, str(slots.get("_trigger", "")), intent)
+    return res
 
 
 async def _do_create(db: AsyncSession, cid: int, slots: dict) -> dict:
@@ -667,6 +745,9 @@ async def run_assistant(
     message = (message or "").strip()
     if not message:
         return _reply("Savol yoki buyruq yozing.")
+
+    # Oʻrgangan misollarni yangilab olamiz (boshqa worker qoshgan boʻlishi mumkin).
+    await _store().ensure_fresh(db)
 
     if pending and pending.get("intent"):
         return await _handle_pending(db, cid, message, pending)
