@@ -51,6 +51,7 @@ from app.routers import (
     white_label,
     membership_bookings,
     guest_bookings,
+    track as track_router,
 )
 
 settings = get_settings()
@@ -134,6 +135,17 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE tours ADD COLUMN branch_id INTEGER",
             "ALTER TABLE tour_requests ADD COLUMN source VARCHAR(20) DEFAULT 'qolda'",
             "ALTER TABLE tour_requests ADD COLUMN branch_id INTEGER",
+            # Dashboard metrikalari — foydalanuvchi faolligi (DAU/MAU) va tashriflar
+            "ALTER TABLE users ADD COLUMN last_active_at TIMESTAMP",
+            """CREATE TABLE IF NOT EXISTS site_visits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id INTEGER REFERENCES companies(id),
+                path VARCHAR(500),
+                visitor_key VARCHAR(64),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+            )""",
+            "CREATE INDEX IF NOT EXISTS ix_site_visits_created_at ON site_visits (created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_site_visits_company_id ON site_visits (company_id)",
             """CREATE TABLE IF NOT EXISTS call_recordings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 company_id INTEGER NOT NULL REFERENCES companies(id),
@@ -262,8 +274,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # CORS'dan OLDIN qo'shiladi, shunda CORS tashqarida qolib 402 javobga ham
 # sarlavhalarni qo'shadi.
 from app.middleware.subscription_guard import SubscriptionGuardMiddleware  # noqa: E402
+from app.middleware.activity import ActivityMiddleware  # noqa: E402
 
 app.add_middleware(SubscriptionGuardMiddleware)
+# Foydalanuvchi faolligini (DAU/MAU) belgilaydi — o'zi fail-open.
+app.add_middleware(ActivityMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -283,6 +298,7 @@ app.include_router(bookings.router)
 app.include_router(crm.router)
 app.include_router(requests_router.router)
 app.include_router(reports.router)
+app.include_router(track_router.router)
 app.include_router(exports_router.router)
 app.include_router(tariff_router.router)
 app.include_router(branches_router.router)

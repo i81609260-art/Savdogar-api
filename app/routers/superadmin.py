@@ -13,7 +13,7 @@ from app.models.company import CompanyStatus
 from app.models.user import User, UserRole
 from app.schemas.auth import SuperAdminUserResponse, UserResponse
 from app.schemas.company import CompanyDetailResponse, CompanyRejectRequest, CompanyResponse
-from app.schemas.reports import SuperAdminStats
+from app.schemas.reports import OverviewResponse, SuperAdminStats
 from app.services.reports_service import ReportsService
 from app.services.superadmin_service import SuperAdminService
 from app.utils.security import hash_password
@@ -306,3 +306,18 @@ async def platform_stats(
 ) -> SuperAdminStats:
     service = ReportsService(db)
     return await service.superadmin_stats()
+
+
+@router.get(
+    "/overview",
+    response_model=OverviewResponse,
+    summary="Dashboard umumiy ko'rinishi (tashrif, DAU/MAU, trend)",
+    dependencies=[Depends(role_required(UserRole.SUPERADMIN))],
+)
+async def platform_overview(
+    range: str = Query("28d", pattern="^(24h|7d|28d|1y|all)$"),
+    db: AsyncSession = Depends(get_db),
+) -> OverviewResponse:
+    """Butun platforma bo'yicha real metrikalar va trend qatori."""
+    service = ReportsService(db)
+    return await service.overview(company_id=None, range_key=range)

@@ -45,6 +45,10 @@ class User(Base):
     )
     push_subscription: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     telegram_chat_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
+    # Oxirgi faollik vaqti — DAU/MAU hisobi uchun. Activity middleware yangilaydi.
+    last_active_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     click_merchant_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     click_merchant_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     payme_merchant_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
