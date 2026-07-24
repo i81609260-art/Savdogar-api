@@ -120,6 +120,8 @@ async def lifespan(app: FastAPI):
             )""",
             "ALTER TABLE branches ADD COLUMN lat FLOAT",
             "ALTER TABLE branches ADD COLUMN lng FLOAT",
+            # Filialni kim qoshgani (audit) — qaysi firma va kim/qachon
+            "ALTER TABLE branches ADD COLUMN created_by INTEGER",
             """CREATE TABLE IF NOT EXISTS tariff_changes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 company_id INTEGER NOT NULL REFERENCES companies(id),

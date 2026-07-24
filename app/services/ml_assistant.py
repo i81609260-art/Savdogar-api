@@ -15,9 +15,11 @@ Tashqi API yoʻq, kalit kerak emas — hammasi shu serverda ishlaydi. Holat
 import logging
 import re
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
+from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -28,8 +30,10 @@ from app.models.booking import Booking, BookingStatus
 from app.models.company import Company
 from app.models.tour import Tour
 from app.models.user import User
+from app.schemas.tour import TourCreate
 from app.services.reports_service import ReportsService
 from app.services.tariff import DEFAULT_TARIFF, get_tariff, within_tour_limit
+from app.services.tour_service import TourService
 
 logger = logging.getLogger(__name__)
 
@@ -616,7 +620,8 @@ def _advance_set_active(slots: dict) -> dict:
                   pending={"intent": "set_active", "slots": slots, "stage": "confirm"})
 
 
-async def _handle_pending(db: AsyncSession, cid: int, message: str, pending: dict) -> dict:
+async def _handle_pending(db: AsyncSession, user: User, message: str, pending: dict) -> dict:
+    cid = user.company_id
     intent = pending.get("intent")
     slots = dict(pending.get("slots") or {})
     stage = pending.get("stage")
@@ -626,7 +631,7 @@ async def _handle_pending(db: AsyncSession, cid: int, message: str, pending: dic
 
     if stage == "confirm":
         if is_affirm(message):
-            return await _execute(db, cid, intent, slots)
+            return await _execute(db, user, intent, slots)
         # Tasdiq emas — qayta soraymiz.
         if intent == "create_tour":
             return _reply(_create_summary(slots), pending={"intent": intent, "slots": slots, "stage": "confirm"})
@@ -675,14 +680,14 @@ async def _handle_pending(db: AsyncSession, cid: int, message: str, pending: dic
     return _reply(_HELP)
 
 
-async def _execute(db: AsyncSession, cid: int, intent: str, slots: dict) -> dict:
+async def _execute(db: AsyncSession, user: User, intent: str, slots: dict) -> dict:
     try:
         if intent == "create_tour":
-            res = await _do_create(db, cid, slots)
+            res = await _do_create(db, user, slots)
         elif intent == "update_price":
-            res = await _do_update_price(db, cid, slots)
+            res = await _do_update_price(db, user.company_id, slots)
         elif intent == "set_active":
-            res = await _do_set_active(db, cid, slots)
+            res = await _do_set_active(db, user.company_id, slots)
         else:
             return _reply("Tushunmadim.")
     except Exception:  # noqa: BLE001 — amal xatosi suhbatni buzmasin
@@ -691,11 +696,16 @@ async def _execute(db: AsyncSession, cid: int, intent: str, slots: dict) -> dict
         return _reply("Amalni bajarishda xatolik boldi. Qaytadan urinib koring.")
     # Amal muvaffaqiyatli bajarildi — asl buyruqni oʻrganamiz (tasdiqlangan misol).
     if res.get("actions"):
-        await _store().learn(db, cid, str(slots.get("_trigger", "")), intent)
+        await _store().learn(db, user.company_id, str(slots.get("_trigger", "")), intent)
     return res
 
 
-async def _do_create(db: AsyncSession, cid: int, slots: dict) -> dict:
+async def _do_create(db: AsyncSession, user: User, slots: dict) -> dict:
+    """Turni qoshadi — qolda forma bilan bir xil TourService yoʻlidan.
+
+    Shu tufayli end_date, branch va tarif tekshiruvi qolda yaratish bilan
+    aynan bir xil ishlaydi (productionда ham).
+    """
     try:
         price = float(slots["price"])
         duration = int(slots["duration_days"])
@@ -705,31 +715,38 @@ async def _do_create(db: AsyncSession, cid: int, slots: dict) -> dict:
     if price <= 0 or duration < 1 or seats < 1:
         return _reply("Narx musbat, kun va joylar kamida 1 boʻlishi kerak.")
 
-    used = (await db.execute(select(func.count(Tour.id)).where(Tour.company_id == cid))).scalar() or 0
-    tariff = (await db.execute(select(Company.tariff).where(Company.id == cid))).scalar_one_or_none()
-    if not within_tour_limit(tariff, used):
-        return _reply("Tarif boyicha turlar limiti tugagan — yuqori tarifga oting.")
-
     start_date: Optional[date] = None
     if slots.get("start_date"):
         try:
             start_date = datetime.strptime(str(slots["start_date"]), "%Y-%m-%d").date()
         except ValueError:
             start_date = None
+    # Sana berilgan boʻlsa tugash sanasini muddatdan hisoblaymiz.
+    end_date = start_date + timedelta(days=duration) if start_date else None
 
-    title = str(slots.get("title") or f"{slots.get('city', 'Yangi')} sayohati")
-    city = str(slots.get("city") or title)
-    tour = Tour(
-        company_id=cid, title=title, description=f"{title} — {city}. {duration} kunlik tur.",
-        city=city, country="Uzbekistan", price=price, currency="UZS",
-        duration_days=duration, available_slots=seats, booking_type="group",
-        start_date=start_date, is_active=True,
-    )
-    db.add(tour)
-    await db.commit()
-    await db.refresh(tour)
-    return _reply(f"Tayyor! '{tour.title}' turi qoshildi (#{tour.id}).",
-                  actions=[f"Tur qoshildi: {tour.title}"])
+    title = str(slots.get("title") or f"{slots.get('city', 'Yangi')} sayohati").strip()
+    city = str(slots.get("city") or title).strip()
+    description = f"{title} — {city}. {duration} kunlik tur paketi."
+
+    try:
+        data = TourCreate(
+            title=title, description=description, city=city, country="Uzbekistan",
+            price=price, currency="UZS", duration_days=duration,
+            start_date=start_date, end_date=end_date, available_slots=seats,
+            booking_type="group", branch_id=None,
+        )
+    except ValidationError:
+        return _reply("Malumot notogri (masalan tur nomi juda qisqa). Qaytadan 'tur qosh' deng.")
+
+    try:
+        result = await TourService(db).create_tour(user, data)
+        await db.commit()
+    except HTTPException as exc:
+        await db.rollback()
+        return _reply(str(exc.detail))
+
+    return _reply(f"Tayyor! '{result.title}' turi qoshildi (#{result.id}).",
+                  actions=[f"Tur qoshildi: {result.title}"])
 
 
 async def _do_update_price(db: AsyncSession, cid: int, slots: dict) -> dict:
@@ -783,5 +800,5 @@ async def run_assistant(
     await _store().ensure_fresh(db)
 
     if pending and pending.get("intent"):
-        return await _handle_pending(db, cid, message, pending)
+        return await _handle_pending(db, user, message, pending)
     return await _handle_no_pending(db, cid, message)

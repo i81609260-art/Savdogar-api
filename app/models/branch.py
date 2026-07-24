@@ -28,6 +28,10 @@ class Branch(Base):
     lat: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     lng: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     is_main: Mapped[bool] = mapped_column(Boolean, default=False, nullable=True)
+    # Kim qoshgani (audit) — faqat shu firma ichida koʻrinadi.
+    created_by: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

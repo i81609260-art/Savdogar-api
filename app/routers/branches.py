@@ -1,5 +1,6 @@
 """Branch (filial) management — CRUD scoped to the admin's company."""
 
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -39,6 +40,9 @@ class BranchOut(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
     is_main: bool = False
+    # Audit — kim qoshgani va qachon (faqat shu firma koradi).
+    created_at: Optional[datetime] = None
+    created_by_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -66,9 +70,26 @@ async def list_branches(
             .order_by(Branch.is_main.desc(), Branch.id.asc())
         )
     ).scalars().all()
+
+    # Qoshgan xodimlarning ismlari (faqat shu firma ichidan).
+    creator_ids = {b.created_by for b in rows if b.created_by}
+    names: dict[int, str] = {}
+    if creator_ids:
+        for uid, full_name in (
+            await db.execute(select(User.id, User.full_name).where(User.id.in_(creator_ids)))
+        ).all():
+            names[uid] = full_name
+
     tariff = get_tariff(await _company_tariff(db, current_user.company_id))
     return {
-        "branches": [BranchOut.model_validate(b) for b in rows],
+        "branches": [
+            BranchOut(
+                id=b.id, name=b.name, city=b.city, address=b.address, phone=b.phone,
+                lat=b.lat, lng=b.lng, is_main=bool(b.is_main), created_at=b.created_at,
+                created_by_name=names.get(b.created_by) if b.created_by else None,
+            )
+            for b in rows
+        ],
         "used": len(rows),
         "max_branches": tariff["max_branches"],
     }
@@ -108,11 +129,16 @@ async def create_branch(
         lat=data.lat,
         lng=data.lng,
         is_main=(count == 0),  # first branch is the main office
+        created_by=current_user.id,  # audit: kim qoshdi
     )
     db.add(branch)
     await db.commit()
     await db.refresh(branch)
-    return BranchOut.model_validate(branch)
+    return BranchOut(
+        id=branch.id, name=branch.name, city=branch.city, address=branch.address,
+        phone=branch.phone, lat=branch.lat, lng=branch.lng, is_main=bool(branch.is_main),
+        created_at=branch.created_at, created_by_name=current_user.full_name,
+    )
 
 
 @router.patch("/{branch_id}", response_model=BranchOut, summary="Filialni tahrirlash")
