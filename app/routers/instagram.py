@@ -14,6 +14,7 @@ Xavfsizlik: har bir webhook so'rovi X-Hub-Signature-256 orqali App Secret
 bilan tekshiriladi — imzosiz yoki notogri imzoli so'rov rad etiladi.
 """
 
+import base64
 import hashlib
 import hmac
 import json
@@ -630,6 +631,105 @@ async def verify_webhook(request: Request) -> Response:
     if mode == "subscribe" and expected and hmac.compare_digest(token or "", expected):
         return Response(content=challenge, media_type="text/plain")
     return Response(content="forbidden", status_code=403, media_type="text/plain")
+
+
+# ── Meta signed_request (deauthorize / data deletion) ─────────────────────────
+
+def _parse_signed_request(signed: str) -> Optional[dict]:
+    """Meta yuboradigan signed_request ni tekshirib ochadi.
+
+    Format: "<base64url_imzo>.<base64url_json>". Imzo app secret bilan
+    HMAC-SHA256. Imzo mos kelmasa None — soxta sorov qabul qilinmaydi.
+    """
+    if not signed or "." not in signed:
+        return None
+    enc_sig, payload = signed.split(".", 1)
+
+    def _b64(s: str) -> bytes:
+        return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
+
+    try:
+        sig = _b64(enc_sig)
+        data = json.loads(_b64(payload))
+    except Exception:
+        return None
+
+    for secret in settings.webhook_secrets:
+        expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).digest()
+        if hmac.compare_digest(expected, sig):
+            return data
+    logger.warning("signed_request imzosi mos kelmadi")
+    return None
+
+
+async def _purge_instagram_data(db: AsyncSession, ig_user_id: str) -> int:
+    """Instagram foydalanuvchisiga tegishli barcha malumotni ochiradi.
+
+    Lead'lar (tour_requests) firmaning ish yozuvi — ular saqlanadi, lekin
+    Instagram identifikatorlari (thread'lar) va akkaunt ulanishi ochiriladi.
+    """
+    removed = 0
+    acc = (await db.execute(
+        select(InstagramAccount).where(InstagramAccount.ig_user_id == ig_user_id)
+    )).scalar_one_or_none()
+    if acc:
+        threads = (await db.execute(
+            select(InstagramThread).where(InstagramThread.company_id == acc.company_id)
+        )).scalars().all()
+        for t in threads:
+            await db.delete(t)
+            removed += 1
+        await db.delete(acc)
+        removed += 1
+
+    # DM yozgan mijoz sifatidagi izlar (ig_sender_id) — kompaniyadan qatʼi nazar.
+    for t in (await db.execute(
+        select(InstagramThread).where(InstagramThread.ig_sender_id == ig_user_id)
+    )).scalars().all():
+        await db.delete(t)
+        removed += 1
+
+    await db.commit()
+    return removed
+
+
+def _deletion_code(ig_user_id: str) -> str:
+    return hashlib.sha256(f"{ig_user_id}:{settings.secret_key}".encode()).hexdigest()[:16]
+
+
+@webhook_router.post("/deauthorize", summary="Meta: ilova ochirildi", include_in_schema=False)
+async def instagram_deauthorize(request: Request, db: AsyncSession = Depends(get_db)) -> dict:
+    """Foydalanuvchi Instagram sozlamalarida ilovani ochirganda Meta chaqiradi."""
+    form = await request.form()
+    data = _parse_signed_request(str(form.get("signed_request") or ""))
+    if not data:
+        raise HTTPException(status_code=400, detail="signed_request yaroqsiz")
+    uid = str(data.get("user_id") or "")
+    if uid:
+        n = await _purge_instagram_data(db, uid)
+        logger.info("Instagram deauthorize: %s -> %d yozuv ochirildi", uid, n)
+    return {"ok": True}
+
+
+@webhook_router.post("/data-deletion", summary="Meta: malumotni ochirish sorovi", include_in_schema=False)
+async def instagram_data_deletion(request: Request, db: AsyncSession = Depends(get_db)) -> dict:
+    """Meta'ning "Data Deletion Request" callback'i.
+
+    Javob JSON boʻlishi va {url, confirmation_code} qaytarishi SHART —
+    Meta shu formatni kutadi.
+    """
+    form = await request.form()
+    data = _parse_signed_request(str(form.get("signed_request") or ""))
+    if not data:
+        raise HTTPException(status_code=400, detail="signed_request yaroqsiz")
+
+    uid = str(data.get("user_id") or "")
+    code = _deletion_code(uid)
+    n = await _purge_instagram_data(db, uid) if uid else 0
+    logger.info("Instagram data deletion: %s -> %d yozuv ochirildi (kod %s)", uid, n, code)
+
+    base = settings.frontend_url.rstrip("/")
+    return {"url": f"{base}/data-deletion?code={code}", "confirmation_code": code}
 
 
 def _valid_signature(body: bytes, header: Optional[str]) -> bool:
