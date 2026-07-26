@@ -987,6 +987,31 @@ async def _handle_dm(db: AsyncSession, entry: dict, event: dict) -> None:
     await _reply(acc, sender_id, _ALREADY)
 
 
+_COMMENT_REPLY = (
+    "Rahmat, {who}! Savolingizni qabul qildik — batafsil malumot uchun "
+    "shaxsiy xabar (DM) yozing, operatorimiz javob beradi."
+)
+
+
+async def _reply_to_comment(acc: InstagramAccount, comment_id: str, who: str) -> None:
+    """Izohga ochiq javob qaytaradi.
+
+    Bu instagram_business_manage_comments ruxsatini haqiqatda ishlatadi —
+    Meta App Review har bir ruxsat uchun kamida bitta muvaffaqiyatli API
+    chaqiruvini talab qiladi. Ayni paytda mijoz javobsiz qolmaydi.
+    """
+    if not comment_id:
+        return
+    resp = await _post(
+        f"{comment_id}/replies",
+        acc.page_access_token,
+        host=_host(acc.login_type),
+        message=_COMMENT_REPLY.format(who=who or "mijoz"),
+    )
+    if (err := _graph_error(resp)):
+        logger.warning("Instagram izohiga javob berib bolmadi: %s", err)
+
+
 async def _handle_comment(db: AsyncSession, entry: dict, value: dict) -> None:
     """Post izohidan ham lead yaratamiz (telefon yoq — operator bogʻlanadi)."""
     acc = await _account_for_entry(db, entry)
@@ -996,6 +1021,7 @@ async def _handle_comment(db: AsyncSession, entry: dict, value: dict) -> None:
     frm = value.get("from") or {}
     sender_id = str(frm.get("id") or "")
     username = frm.get("username")
+    comment_id = str(value.get("id") or "")
     text = (value.get("text") or "").strip()
     if not sender_id or sender_id == acc.ig_user_id:
         return
@@ -1008,6 +1034,8 @@ async def _handle_comment(db: AsyncSession, entry: dict, value: dict) -> None:
         )
     )).scalar_one_or_none()
     if thread:
+        # Lead takrorlanmaydi, lekin izohga baribir javob beramiz.
+        await _reply_to_comment(acc, comment_id, username)
         return
 
     lead = await _create_lead(
@@ -1035,3 +1063,4 @@ async def _handle_comment(db: AsyncSession, entry: dict, value: dict) -> None:
         f"@{username or sender_id}: {text[:80]}",
     )
     await db.commit()
+    await _reply_to_comment(acc, comment_id, username)
