@@ -45,6 +45,31 @@ class Settings(BaseSettings):
     sair_webhook_secret: str = ""
     savdogar_public_url: str = "http://localhost:8000"
 
+    # Instagram / Meta integratsiyasi (lead yigish).
+    # DIQQAT: bularni hech qachon kodga yozmang — faqat environment variable.
+    # App Secret Meta konsolida ochilib qolsa, darhol Reset App Secret qiling.
+    # Meta'da ikki xil yol bor va ikkalasining OZ app secret'i bor:
+    #   1) "Instagram API with Instagram login"  -> graph.instagram.com
+    #      Webhook imzosi INSTAGRAM_APP_SECRET bilan hisoblanadi.
+    #   2) "API setup with Facebook login"       -> graph.facebook.com
+    #      Webhook imzosi FACEBOOK_APP_SECRET bilan hisoblanadi.
+    # Qaysi biri ishlatilsa oshanisi toldiriladi; ikkalasi ham bolsa — ikkalasi
+    # ham tekshiriladi, shuning uchun yolni almashtirsangiz ham buzilmaydi.
+    facebook_app_id: str = ""
+    facebook_app_secret: str = ""
+    instagram_app_id: str = ""
+    instagram_app_secret: str = ""
+    # Meta webhook'ni tasdiqlash uchun ozingiz oylab topadigan maxfiy matn.
+    # Meta konsolidagi "Verify token" maydoniga aynan shu qiymat yoziladi.
+    instagram_verify_token: str = ""
+    # Graph API versiyasi.
+    facebook_graph_version: str = "v21.0"
+
+    @property
+    def webhook_secrets(self) -> List[str]:
+        """Webhook imzosini tekshirishda sinaladigan barcha secret'lar."""
+        return [s for s in (self.instagram_app_secret, self.facebook_app_secret) if s]
+
     # Telegram bot
     telegram_bot_token: str = ""
     # Platforma egasiga xabar boradigan chat ID(lar), vergul bilan.

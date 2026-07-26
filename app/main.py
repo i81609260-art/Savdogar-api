@@ -1,5 +1,6 @@
 """Savdogar FastAPI — CRM/POS + SAIR integratsiya."""
 
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -40,6 +41,8 @@ from app.routers.tour_groups import public_router as tour_groups_public_router
 from app.routers.tour_groups import admin_router as tour_groups_admin_router
 from app.routers.company_bot import admin_router as company_bot_admin_router
 from app.routers.company_bot import webhook_router as company_bot_webhook_router
+from app.routers.instagram import admin_router as instagram_admin_router
+from app.routers.instagram import webhook_router as instagram_webhook_router
 from app.routers import (
     tour_creator,
     telegram_miniapp,
@@ -196,6 +199,38 @@ async def lifespan(app: FastAPI):
                 status VARCHAR(20) NOT NULL DEFAULT 'new',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
             )""",
+            # Instagram (Meta) integratsiyasi — lead yigish
+            """CREATE TABLE IF NOT EXISTS instagram_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id INTEGER NOT NULL UNIQUE REFERENCES companies(id),
+                ig_user_id VARCHAR(50) NOT NULL UNIQUE,
+                ig_username VARCHAR(100),
+                login_type VARCHAR(20) NOT NULL DEFAULT 'instagram',
+                page_id VARCHAR(50),
+                page_name VARCHAR(255),
+                page_access_token VARCHAR(500) NOT NULL,
+                webhook_subscribed BOOLEAN NOT NULL DEFAULT 0,
+                is_active BOOLEAN NOT NULL DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+            )""",
+            """CREATE TABLE IF NOT EXISTS instagram_threads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id INTEGER NOT NULL REFERENCES companies(id),
+                ig_sender_id VARCHAR(50) NOT NULL,
+                ig_username VARCHAR(100),
+                request_id INTEGER,
+                stage VARCHAR(20) NOT NULL DEFAULT 'name',
+                lead_name VARCHAR(255),
+                lead_phone VARCHAR(20),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+            )""",
+            # Instagram login yoli qoshilgach — Page majburiy emas.
+            "ALTER TABLE instagram_accounts ADD COLUMN login_type VARCHAR(20) DEFAULT 'instagram'",
+            "ALTER TABLE instagram_accounts ALTER COLUMN page_id DROP NOT NULL",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_ig_thread ON instagram_threads (company_id, ig_sender_id)",
+            "CREATE INDEX IF NOT EXISTS ix_instagram_threads_sender ON instagram_threads (ig_sender_id)",
             """CREATE TABLE IF NOT EXISTS company_telegram_bots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 company_id INTEGER NOT NULL UNIQUE REFERENCES companies(id),
@@ -230,8 +265,13 @@ async def lifespan(app: FastAPI):
         try:
             async with engine.begin() as conn:
                 await conn.execute(__import__("sqlalchemy").text(stmt))
-        except Exception:
-            pass  # Already applied or not applicable to this dialect
+        except Exception as exc:
+            # Odatda "ustun allaqachon bor" — bu normal. Lekin butunlay jim
+            # qolish xatoni yashirardi (masalan DROP NOT NULL otmay qolgani).
+            # Shuning uchun sababni logga yozamiz.
+            logging.getLogger(__name__).debug(
+                "Migratsiya otkazib yuborildi: %s -> %s", stmt.split("\n")[0][:80], exc
+            )
     await seed_superadmin()
     yield
 
@@ -333,6 +373,8 @@ app.include_router(tour_groups_public_router)
 app.include_router(tour_groups_admin_router)
 app.include_router(company_bot_admin_router)
 app.include_router(company_bot_webhook_router)
+app.include_router(instagram_admin_router)
+app.include_router(instagram_webhook_router)
 app.include_router(tour_creator.router)
 app.include_router(telegram_miniapp.router)
 app.include_router(analytics.router)

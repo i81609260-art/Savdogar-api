@@ -30,7 +30,9 @@ from app.models.booking import Booking, BookingStatus
 from app.models.company import Company
 from app.models.tour import Tour
 from app.models.user import User
-from app.schemas.tour import TourCreate
+from app.schemas.crm import CustomerCreateRequest
+from app.schemas.tour import TourCreate, TourUpdate
+from app.services.crm_service import CRMService
 from app.services.reports_service import ReportsService
 from app.services.tariff import DEFAULT_TARIFF, get_tariff, within_tour_limit
 from app.services.tour_service import TourService
@@ -72,6 +74,26 @@ INTENT_TRAINING: list[tuple[str, str]] = [
     # count_customers
     ("nechta mijoz bor", "count_customers"), ("mijozlar soni", "count_customers"),
     ("qancha mijozim bor", "count_customers"), ("mijoz soni qancha", "count_customers"),
+    # list_customers
+    ("mijozlar royxati", "list_customers"), ("mijozlarni korsat", "list_customers"),
+    ("mijozlarim", "list_customers"), ("mijozlar kimlar", "list_customers"),
+    ("mijozlar royxatini ber", "list_customers"),
+    # instagram_leads
+    ("instagram lidlari", "instagram_leads"), ("instagramdan nechta lead", "instagram_leads"),
+    ("instagram sorovlari", "instagram_leads"), ("instagramdan kim yozdi", "instagram_leads"),
+    ("instagram leadlari", "instagram_leads"), ("instagram statistikasi", "instagram_leads"),
+    # create_customer
+    ("mijoz qosh", "create_customer"), ("yangi mijoz qosh", "create_customer"),
+    ("mijoz qoshmoqchiman", "create_customer"), ("mijoz qoshish", "create_customer"),
+    ("yangi mijoz yarat", "create_customer"), ("mijozni royxatga ol", "create_customer"),
+    ("mijoz royxatdan otkaz", "create_customer"), ("mijoz kirit", "create_customer"),
+    # update_tour — narxdan tashqari maydonlarni tahrirlash
+    ("turni tahrirla", "update_tour"), ("tur nomini ozgartir", "update_tour"),
+    ("nomini ozgartir", "update_tour"), ("shahrini ozgartir", "update_tour"),
+    ("yonalishini ozgartir", "update_tour"), ("muddatini ozgartir", "update_tour"),
+    ("kunini ozgartir", "update_tour"), ("joylar sonini ozgartir", "update_tour"),
+    ("sanasini ozgartir", "update_tour"), ("turni ozgartir", "update_tour"),
+    ("tur malumotini yangila", "update_tour"), ("turni tahrirlamoqchiman", "update_tour"),
     # recent_bookings
     ("oxirgi bronlar", "recent_bookings"), ("songgi bronlar", "recent_bookings"),
     ("kim bron qildi", "recent_bookings"), ("bronlar royxati", "recent_bookings"),
@@ -112,20 +134,58 @@ INTENT_TRAINING: list[tuple[str, str]] = [
 _CONF_THRESHOLD = 0.18  # past ishonchda -> unknown
 
 # Kritik intentlar uchun kalit soʻz tayanchi (kichik dataset ishonchsizligiga qarshi).
+# DIQQAT: birinchi mos kelgan kalit gʻalaba qiladi, shuning uchun aniqroq
+# (koʻp soʻzli) iboralar umumiylaridan OLDIN turishi shart. Masalan
+# "mijoz qosh" — "qosh" dan oldin boʻlmasa, tur qoshishga ketib qoladi.
 _KEYWORDS: list[tuple[str, str]] = [
-    ("qosh", "create_tour"), ("yarat", "create_tour"),
+    # --- Instagram (oʻziga xos soʻz, hech narsa bilan chalkashmaydi) ---
+    ("instagram", "instagram_leads"), ("insta", "instagram_leads"),
+    # --- Mijoz amallari (eng aniq) ---
+    ("mijoz qosh", "create_customer"), ("mijoz qoshish", "create_customer"),
+    ("yangi mijoz", "create_customer"), ("mijoz yarat", "create_customer"),
+    ("mijozni royxatga", "create_customer"), ("mijoz kirit", "create_customer"),
+    ("mijozlar royxati", "list_customers"), ("mijozlarni korsat", "list_customers"),
+    ("mijozlarim", "list_customers"),
+    # --- Tur tahrirlash — aniq iboralar ---
     # "narx" oʻzi juda keng (masalan "kripto narxi") — narx oʻzgartirishni
     # klassifikatorga qoldiramiz, faqat aniq iboralarni tayanch qilamiz.
     ("narxni ozgartir", "update_price"), ("narxini ozgartir", "update_price"),
     ("narxini yangila", "update_price"), ("narx ozgartir", "update_price"),
+    ("nomini ozgartir", "update_tour"), ("nomini yangila", "update_tour"),
+    ("shahrini ozgartir", "update_tour"), ("yonalishini ozgartir", "update_tour"),
+    ("kunini ozgartir", "update_tour"), ("muddatini ozgartir", "update_tour"),
+    ("joyini ozgartir", "update_tour"), ("joylarini ozgartir", "update_tour"),
+    ("joylar sonini", "update_tour"), ("sanasini ozgartir", "update_tour"),
+    ("turni tahrirla", "update_tour"), ("tahrirla", "update_tour"),
+    # --- Tur qoshish (umumiy "qosh" shu yerda) ---
+    ("tur qosh", "create_tour"), ("qosh", "create_tour"), ("yarat", "create_tour"),
     ("faollashtir", "set_active"), ("nofaol", "set_active"), ("yashir", "set_active"),
     ("xisobot", "report"), ("hisobot", "report"), ("daromad", "report"), ("statistika", "report"),
     ("royxat", "list_tours"),
     ("nechta tur", "count_tours"), ("tur soni", "count_tours"),
+    ("nechta mijoz", "count_customers"), ("mijozlar soni", "count_customers"),
     ("mijoz", "count_customers"),
     ("bron", "recent_bookings"),
     ("tarif", "get_plan"),
 ]
+
+# Yozuvchi (oʻzgartiruvchi) intentlar — kalit soʻz topilsa klassifikatordan ustun.
+_WRITE_INTENTS = ("create_tour", "update_price", "set_active", "create_customer", "update_tour")
+
+# Qoshish maʼnosini beruvchi feʼllar.
+_CREATE_VERBS = ("qosh", "yarat", "kirit", "royxatga", "royxatdan")
+
+
+def _pair_intent(t: str) -> Optional[str]:
+    """Ikki soʻzli qoida — soʻzlar yonma-yon kelmasa ham ishlaydi.
+
+    "Alini mijoz qilib kirit" kabi gapda "mijoz kirit" ketma-ket emas, shuning
+    uchun oddiy kalit soʻz mos kelmay, "mijoz" -> count_customers ga tushib
+    ketardi. Bu yerda "mijoz" + qoshish feʼli birgalikda tekshiriladi.
+    """
+    if "mijoz" in t and any(v in t for v in _CREATE_VERBS):
+        return "create_customer"
+    return None
 
 
 # Oʻrgangan misollarni DB dan qayta yuklash oraligʻi (worker'lar orasida tarqalishi uchun).
@@ -168,10 +228,14 @@ class _LearningStore:
         idx = int(proba.argmax())
         intent = self.clf.classes_[idx]
         conf = float(proba[idx])
+        # Ikki soʻzli qoida kalit soʻzlardan ustun turadi.
+        pair = _pair_intent(t)
+        if pair:
+            return pair, max(conf, 0.6)
         # Kalit soʻz tayanchi — ishonch past yoki aniq kalit boʻlsa ustuvor.
         for kw, kw_intent in _KEYWORDS:
             if kw in t:
-                if conf < 0.5 or kw_intent in ("create_tour", "update_price", "set_active"):
+                if conf < 0.5 or kw_intent in _WRITE_INTENTS:
                     return kw_intent, max(conf, 0.6)
         if conf < _CONF_THRESHOLD:
             return "unknown", conf
@@ -235,8 +299,20 @@ def is_configured() -> bool:
 # 2) Slot ajratish — qoidalar / regex
 # --------------------------------------------------------------------------- #
 
+_APOSTROPHES = "'‘’ʻʼ`´"
+
+
 def _norm(text: str) -> str:
-    return re.sub(r"\s+", " ", (text or "").lower().replace("ʻ", "'").replace("’", "'")).strip()
+    """Matnni solishtirish uchun bir shaklga keltiradi.
+
+    Tutuq belgilari BUTUNLAY olib tashlanadi — dataset va kalit soʻzlar
+    tutuqsiz yozilgan, foydalanuvchi esa "qo'sh", "o'zgartir" deb yozadi.
+    Shusiz bunday xabarlar hech bir kalit soʻzga mos kelmay qolardi.
+    """
+    t = (text or "").lower()
+    for ch in _APOSTROPHES:
+        t = t.replace(ch, "")
+    return re.sub(r"\s+", " ", t).strip()
 
 _AFFIRM = {"ha", "xa", "ha ha", "mayli", "boladi", "ok", "okay", "hop", "xop",
            "tasdiqlayman", "tasdiq", "davom", "albatta", "roziman", "qosh", "qoshaver"}
@@ -251,7 +327,11 @@ def is_affirm(text: str) -> bool:
 
 def is_deny(text: str) -> bool:
     t = _norm(text)
-    return t in _DENY or t.startswith("yoq") or t.startswith("bekor")
+    if t in _DENY or t.startswith("bekor"):
+        return True
+    # Faqat aniq "yoq" / "yoq ..." rad hisoblanadi. Oldin startswith("yoq")
+    # edi — mijoz ismi "Yoqubjon" boʻlsa suhbatni bekor qilib yuborardi.
+    return t == "yoq" or t.startswith("yoq ")
 
 
 def parse_amount(text: str) -> Optional[float]:
@@ -319,6 +399,47 @@ def _this_year() -> int:
     return datetime.utcnow().year
 
 
+_PHONE_RE = re.compile(r"(\+?\d[\d\s\-()]{7,}\d)")
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+
+
+def parse_phone(text: str) -> Optional[str]:
+    """"+998 90 123 45 67", "901234567" -> "+998901234567"."""
+    m = _PHONE_RE.search(text or "")
+    if not m:
+        return None
+    digits = re.sub(r"\D", "", m.group(1))
+    if len(digits) == 9:  # operator kodi bilan yozilgan lokal raqam
+        digits = "998" + digits
+    if len(digits) < 9:
+        return None
+    return "+" + digits
+
+
+def parse_email(text: str) -> Optional[str]:
+    m = _EMAIL_RE.search(text or "")
+    return m.group(0) if m else None
+
+
+def _strip_contacts(text: str) -> str:
+    """Ism ajratishda telefon/email matn ichida qolib ketmasin."""
+    t = _EMAIL_RE.sub(" ", text or "")
+    t = _PHONE_RE.sub(" ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+# Mijoz qoshish buyrugʻidan tur nomini ajratishda buyruq soʻzlari xalaqit
+# bermasin (masalan "Dubay turiga mijoz qosh" -> "dubay turiga").
+_CMD_WORDS_RE = re.compile(
+    r"\b(mijoz|mijozni|mijozga|qosh|qoshish|qoshaver|qoshmoqchiman|yangi|yarat|"
+    r"royxatga|royxatdan|otkaz|ol|kirit)\b"
+)
+
+
+def _strip_cmd_words(text: str) -> str:
+    return re.sub(r"\s+", " ", _CMD_WORDS_RE.sub(" ", _norm(text))).strip()
+
+
 # --------------------------------------------------------------------------- #
 # 3) Tool'lar — hammasi company_id bilan chegaralangan
 # --------------------------------------------------------------------------- #
@@ -374,12 +495,19 @@ async def _resolve_and_store(db: AsyncSession, cid: int, slots: dict, ref: str) 
 # --------------------------------------------------------------------------- #
 
 # create_tour uchun ketma-ket soraladigan maydonlar.
+# "Sana korsatilmagan" belgisi — None dan farqli, chunki None bolsa
+# _advance_create maydonni yana soraydi.
+_NO_DATE = "-"
+
 _CREATE_STEPS: list[tuple[str, str]] = [
     ("title", "Tur nomini yozing (masalan: Dubay sayohati)"),
     ("city", "Qaysi shahar yoki yonalish?"),
     ("price", "Narxi qancha? (masalan: 6 mln yoki 6000000)"),
     ("duration_days", "Necha kunlik tur?"),
     ("available_slots", "Necha kishilik (nechta joy)?"),
+    # Sana soraladi: bazada bu maydon majburiy bolishi mumkin (eski
+    # migratsiyada NOT NULL edi), soralmasa tur qoshilmay qolardi.
+    ("start_date", "Qachon boshlanadi? (masalan: 2026-08-15). Sana hali nomaʼlum bolsa 'yoq' deng"),
 ]
 
 
@@ -388,7 +516,7 @@ def _extract_create_slots(text: str, slots: dict) -> None:
     dur = parse_int_near(text, "kun", "kunlik")
     if dur:
         slots.setdefault("duration_days", dur)
-    seats = parse_int_near(text, "joy", "kishi", "orin", "o'rin", "odam")
+    seats = parse_int_near(text, "joy", "kishi", "orin", "odam", "nafar")
     if seats:
         slots.setdefault("available_slots", seats)
     price = parse_amount(_strip_used(text, dur, seats))
@@ -406,7 +534,7 @@ def _strip_used(text: str, dur: Optional[int], seats: Optional[int]) -> str:
     """Narxni chalkashtirmaslik uchun kun/joy sonlarini matndan olib tashlaydi."""
     t = _norm(text)
     t = re.sub(r"\d+\s*(kun|kunlik)", " ", t)
-    t = re.sub(r"\d+\s*(joy|kishi|orin|o'rin|odam)", " ", t)
+    t = re.sub(r"\d+\s*(joy|kishi|orin|odam|nafar)", " ", t)
     return t
 
 
@@ -433,9 +561,128 @@ def _create_summary(slots: dict) -> str:
         f"muddat: {slots.get('duration_days')} kun",
         f"joylar: {slots.get('available_slots')}",
     ]
-    if slots.get("start_date"):
-        parts.append(f"boshlanish: {slots['start_date']}")
+    sd = slots.get("start_date")
+    parts.append(f"boshlanish: {sd}" if sd and sd != _NO_DATE else "boshlanish: korsatilmagan")
     return "Yangi tur — " + ", ".join(parts) + ". Qoshaymi? (ha / yoq)"
+
+
+# --- Mijoz qoshish ----------------------------------------------------------
+
+# tour_ref alohida ishlanadi (slots ga tour_id sifatida yoziladi).
+_CUSTOMER_STEPS: list[tuple[str, str]] = [
+    ("full_name", "Mijozning ism-familiyasini yozing"),
+    ("phone", "Telefon raqami? (masalan: +998901234567)"),
+    ("tour_ref", "Qaysi turga yozamiz? Tur nomini yoki id sini yozing"),
+    ("guests_count", "Necha kishi? (masalan: 2)"),
+]
+
+
+def _extract_customer_slots(text: str, slots: dict) -> None:
+    """Erkin matndan mijoz maydonlarini toʻldiradi (bor qiymat ustiga yozmaydi)."""
+    ph = parse_phone(text)
+    if ph:
+        slots.setdefault("phone", ph)
+    em = parse_email(text)
+    if em:
+        slots.setdefault("email", em)
+    g = parse_int_near(text, "kishi", "odam", "nafar")
+    if g:
+        slots.setdefault("guests_count", g)
+
+
+def _customer_summary(slots: dict) -> str:
+    parts = [
+        f"ism: {slots.get('full_name')}",
+        f"telefon: {slots.get('phone')}",
+        f"tur: {slots.get('tour_title')}",
+        f"kishi: {slots.get('guests_count')}",
+    ]
+    if slots.get("email"):
+        parts.append(f"email: {slots['email']}")
+    return "Yangi mijoz — " + ", ".join(parts) + ". Qoshaymi? (ha / yoq)"
+
+
+def _advance_create_customer(slots: dict) -> dict:
+    for field, prompt in _CUSTOMER_STEPS:
+        if field == "tour_ref":
+            if not slots.get("tour_id"):
+                return _reply(prompt, pending={"intent": "create_customer", "slots": slots,
+                                               "stage": "collect", "awaiting": "tour_ref"})
+            continue
+        if slots.get(field) in (None, ""):
+            return _reply(prompt, pending={"intent": "create_customer", "slots": slots,
+                                           "stage": "collect", "awaiting": field})
+    return _reply(_customer_summary(slots),
+                  pending={"intent": "create_customer", "slots": slots, "stage": "confirm"})
+
+
+# --- Tur tahrirlash (narxdan tashqari maydonlar) -----------------------------
+
+# (maydon, kalit soʻzlar, soʻrov matni). Tartib muhim — birinchi mos kelgan
+# maydon tanlanadi, shuning uchun aniqroq kalitlar yuqorida.
+_TOUR_FIELDS: list[tuple[str, tuple[str, ...], str]] = [
+    ("title", ("nom", "sarlavha"), "Yangi nomni yozing"),
+    ("city", ("shahar", "shahr", "yonalish"), "Yangi shahar yoki yonalish?"),
+    ("price", ("narx",), "Yangi narx qancha? (masalan: 6 mln)"),
+    ("duration_days", ("kun", "muddat"), "Necha kunlik? (masalan: 5)"),
+    ("available_slots", ("joy", "orin", "kishi"), "Necha kishilik (nechta joy)?"),
+    ("start_date", ("sana", "boshlanish"), "Boshlanish sanasi? (masalan: 2026-08-15)"),
+]
+
+_FIELD_LABEL = {
+    "title": "nomi", "city": "shahri", "price": "narxi",
+    "duration_days": "muddati", "available_slots": "joylar soni",
+    "start_date": "boshlanish sanasi",
+}
+
+
+def _detect_tour_field(text: str) -> Optional[str]:
+    t = _norm(text)
+    for field, kws, _ in _TOUR_FIELDS:
+        for kw in kws:
+            if re.search(r"\b" + kw, t):
+                return field
+    return None
+
+
+def _parse_tour_value(field: str, text: str) -> Any:
+    if field == "price":
+        return parse_amount(text)
+    if field == "duration_days":
+        return parse_int_near(text, "kun", "kunlik", "muddat") or parse_bare_int(text)
+    if field == "available_slots":
+        return parse_int_near(text, "joy", "kishi", "orin", "nafar") or parse_bare_int(text)
+    if field == "start_date":
+        return parse_date(text)
+    return text.strip() or None
+
+
+def _format_tour_value(field: str, value: Any) -> str:
+    if field == "price":
+        return f"{_money(float(value))} som"
+    return str(value)
+
+
+def _advance_update_tour(slots: dict) -> dict:
+    if not slots.get("tour_id"):
+        return _reply("Qaysi turni tahrirlaymiz? Nomini yoki id sini yozing.",
+                      pending={"intent": "update_tour", "slots": slots,
+                               "stage": "collect", "awaiting": "tour_ref"})
+    if not slots.get("field"):
+        return _reply("Nimani ozgartiramiz? (nomi / shahri / narxi / muddati / joylar soni / sanasi)",
+                      pending={"intent": "update_tour", "slots": slots,
+                               "stage": "collect", "awaiting": "field"})
+    field = slots["field"]
+    if slots.get("value") in (None, ""):
+        prompt = next((p for f, _, p in _TOUR_FIELDS if f == field), "Yangi qiymatni yozing")
+        return _reply(prompt, pending={"intent": "update_tour", "slots": slots,
+                                       "stage": "collect", "awaiting": "value"})
+    label = _FIELD_LABEL.get(field, field)
+    return _reply(
+        f"'{slots['tour_title']}' turining {label}ni "
+        f"{_format_tour_value(field, slots['value'])} ga ozgartiraymi? (ha / yoq)",
+        pending={"intent": "update_tour", "slots": slots, "stage": "confirm"},
+    )
 
 
 async def _run_report(db: AsyncSession, cid: int) -> str:
@@ -496,6 +743,59 @@ async def _run_read_intent(db: AsyncSession, cid: int, intent: str) -> str:
         )).scalar() or 0
         return f"Sizda {n} ta mijoz bron qilgan."
 
+    if intent == "list_customers":
+        rows = (await db.execute(
+            select(
+                User.full_name,
+                User.phone,
+                func.count(Booking.id).label("cnt"),
+                func.coalesce(func.sum(Booking.total_price), 0).label("spent"),
+            )
+            .join(Booking, Booking.user_id == User.id)
+            .where(Booking.company_id == cid)
+            .group_by(User.id, User.full_name, User.phone)
+            .order_by(func.max(Booking.created_at).desc())
+            .limit(15)
+        )).all()
+        if not rows:
+            return "Hali mijoz yoq. Yangi mijoz qoshish uchun 'mijoz qosh' deng."
+        lines = ["Mijozlaringiz:"]
+        for r in rows:
+            tel = r[1] or "telefon yoq"
+            lines.append(f"- {r[0]} — {tel}, {r[2]} bron, {_money(float(r[3] or 0))} som")
+        return "\n".join(lines)
+
+    if intent == "instagram_leads":
+        from app.models.request import TourRequest
+
+        total = (await db.execute(
+            select(func.count(TourRequest.id)).where(
+                TourRequest.company_id == cid, TourRequest.source == "instagram"
+            )
+        )).scalar() or 0
+        if not total:
+            return ("Instagramdan hali lead kelmagan. Integratsiyalar bolimida "
+                    "Instagram akkauntni ulaganingizni tekshiring.")
+        yangi = (await db.execute(
+            select(func.count(TourRequest.id)).where(
+                TourRequest.company_id == cid,
+                TourRequest.source == "instagram",
+                TourRequest.status == "Yangi",
+            )
+        )).scalar() or 0
+        rows = (await db.execute(
+            select(TourRequest.lead_name, TourRequest.lead_phone,
+                   TourRequest.destination, TourRequest.status)
+            .where(TourRequest.company_id == cid, TourRequest.source == "instagram")
+            .order_by(TourRequest.created_at.desc()).limit(10)
+        )).all()
+        lines = [f"Instagramdan {total} ta lead keldi ({yangi} tasi yangi).", "", "Oxirgilari:"]
+        for r in rows:
+            tel = r[1] or "telefon yoq"
+            yon = r[2] or "yonalish korsatilmagan"
+            lines.append(f"- {r[0]} — {tel}, {yon} ({r[3]})")
+        return "\n".join(lines)
+
     if intent == "recent_bookings":
         rows = (await db.execute(
             select(Booking.id, Booking.status, Booking.total_price, Booking.created_at, Tour.title)
@@ -526,8 +826,11 @@ async def _run_read_intent(db: AsyncSession, cid: int, intent: str) -> str:
 _CAPABILITIES = (
     "- Xisobot: 'bu oy qancha daromad', 'yetishmovchiliklar'\n"
     "- Turlar: 'nechta tur bor', 'turlar royxati'\n"
-    "- Mijozlar: 'nechta mijoz', 'oxirgi bronlar'\n"
-    "- Amal: 'yangi tur qosh', 'narxni ozgartir', 'turni nofaol qil'"
+    "- Mijozlar: 'nechta mijoz', 'mijozlar royxati', 'oxirgi bronlar'\n"
+    "- Instagram: 'instagram lidlari'\n"
+    "- Tur amallari: 'yangi tur qosh', 'narxni ozgartir', 'nomini ozgartir',\n"
+    "  'muddatini ozgartir', 'turni nofaol qil'\n"
+    "- Mijoz amallari: 'mijoz qosh'"
 )
 
 _HELP = (
@@ -561,7 +864,8 @@ async def _handle_no_pending(db: AsyncSession, cid: int, message: str) -> dict:
         if conf >= _LEARN_CONF:
             await _store().learn(db, cid, message, intent)
         return _reply(reply)
-    if intent in ("count_tours", "list_tours", "count_customers", "recent_bookings", "get_plan"):
+    if intent in ("count_tours", "list_tours", "count_customers", "list_customers",
+                  "recent_bookings", "get_plan", "instagram_leads"):
         reply = await _run_read_intent(db, cid, intent)
         if conf >= _LEARN_CONF:
             await _store().learn(db, cid, message, intent)
@@ -589,6 +893,24 @@ async def _handle_no_pending(db: AsyncSession, cid: int, message: str) -> dict:
                  "is_active": not any(w in t for w in ("nofaol", "yashir", "ochir", "yoq"))}
         await _resolve_and_store(db, cid, slots, message)
         return _advance_set_active(slots)
+
+    if intent == "update_tour":
+        slots = {"_trigger": message}
+        field = _detect_tour_field(message)
+        if field:
+            slots["field"] = field
+        await _resolve_and_store(db, cid, slots, message)
+        return _advance_update_tour(slots)
+
+    if intent == "create_customer":
+        slots = {"_trigger": message}
+        _extract_customer_slots(message, slots)
+        # Tur nomini buyruq soʻzlarisiz qidiramiz, aks holda "mijoz qosh"
+        # dagi "qosh" tasodifan tur nomiga mos kelib qolishi mumkin.
+        ref = _strip_cmd_words(message)
+        if ref:
+            await _resolve_and_store(db, cid, slots, ref)
+        return _advance_create_customer(slots)
 
     return _reply(_HELP)
 
@@ -625,6 +947,13 @@ async def _handle_pending(db: AsyncSession, user: User, message: str, pending: d
     intent = pending.get("intent")
     slots = dict(pending.get("slots") or {})
     stage = pending.get("stage")
+    awaiting = pending.get("awaiting")
+
+    # Sana soralganda "yoq" — bu suhbatni bekor qilish emas, "sana hali
+    # nomaʼlum" degani. Shuning uchun umumiy bekor tekshiruvidan OLDIN turadi.
+    if intent == "create_tour" and stage == "collect" and awaiting == "start_date" and is_deny(message):
+        slots["start_date"] = _NO_DATE
+        return _advance_create(slots)
 
     if is_deny(message):
         return _reply("Bekor qilindi.")
@@ -635,11 +964,12 @@ async def _handle_pending(db: AsyncSession, user: User, message: str, pending: d
         # Tasdiq emas — qayta soraymiz.
         if intent == "create_tour":
             return _reply(_create_summary(slots), pending={"intent": intent, "slots": slots, "stage": "confirm"})
+        if intent == "create_customer":
+            return _reply(_customer_summary(slots), pending={"intent": intent, "slots": slots, "stage": "confirm"})
         return _reply("Tasdiqlash uchun 'ha', bekor uchun 'yoq' deng.",
                       pending={"intent": intent, "slots": slots, "stage": "confirm"})
 
     # stage == collect: kutilayotgan maydonni toʻldiramiz
-    awaiting = pending.get("awaiting")
     if intent == "create_tour":
         if awaiting == "price":
             v = parse_amount(message)
@@ -653,6 +983,17 @@ async def _handle_pending(db: AsyncSession, user: User, message: str, pending: d
             v = parse_int_near(message, "joy", "kishi", "orin") or parse_bare_int(message)
             if v:
                 slots["available_slots"] = v
+        elif awaiting == "start_date":
+            d = parse_date(message)
+            if d:
+                slots["start_date"] = d
+            else:
+                return _reply(
+                    "Sanani tushunmadim. Masalan: 2026-08-15 yoki 15.08.2026. "
+                    "Sana hali nomaʼlum bolsa 'yoq' deng.",
+                    pending={"intent": intent, "slots": slots,
+                             "stage": "collect", "awaiting": "start_date"},
+                )
         elif awaiting in ("title", "city"):
             slots[awaiting] = message.strip()
         # Har ehtimolga qarshi qolgan maydonlarni ham matndan qidiramiz.
@@ -677,7 +1018,73 @@ async def _handle_pending(db: AsyncSession, user: User, message: str, pending: d
                               pending={"intent": intent, "slots": slots, "stage": "collect", "awaiting": "tour_ref"})
         return _advance_set_active(slots)
 
+    if intent == "update_tour":
+        if awaiting == "tour_ref":
+            if not await _resolve_and_store(db, cid, slots, message):
+                return _reply("Bunday tur topilmadi. Nomini yoki id sini aniq yozing.",
+                              pending={"intent": intent, "slots": slots, "stage": "collect", "awaiting": "tour_ref"})
+        elif awaiting == "field":
+            field = _detect_tour_field(message)
+            if not field:
+                return _reply(
+                    "Tushunmadim. Quyidagilardan birini yozing: "
+                    "nomi / shahri / narxi / muddati / joylar soni / sanasi",
+                    pending={"intent": intent, "slots": slots, "stage": "collect", "awaiting": "field"},
+                )
+            slots["field"] = field
+        elif awaiting == "value":
+            v = _parse_tour_value(slots.get("field", ""), message)
+            if v is None:
+                prompt = next((p for f, _, p in _TOUR_FIELDS if f == slots.get("field")),
+                              "Yangi qiymatni yozing")
+                return _reply(f"Qiymatni tushunmadim. {prompt}",
+                              pending={"intent": intent, "slots": slots, "stage": "collect", "awaiting": "value"})
+            slots["value"] = v
+        return _advance_update_tour(slots)
+
+    if intent == "create_customer":
+        if awaiting == "tour_ref":
+            if not await _resolve_and_store(db, cid, slots, message):
+                return _reply("Bunday tur topilmadi. Nomini yoki id sini aniq yozing.",
+                              pending={"intent": intent, "slots": slots, "stage": "collect", "awaiting": "tour_ref"})
+        elif awaiting == "full_name":
+            # Telefon/email bir xabarda kelsa ism ichida qolib ketmasin.
+            slots["full_name"] = _strip_contacts(message) or message.strip()
+        elif awaiting == "phone":
+            ph = parse_phone(message)
+            if not ph:
+                return _reply("Telefon raqamini tushunmadim. Masalan: +998901234567",
+                              pending={"intent": intent, "slots": slots, "stage": "collect", "awaiting": "phone"})
+            slots["phone"] = ph
+        elif awaiting == "guests_count":
+            v = parse_int_near(message, "kishi", "odam", "nafar") or parse_bare_int(message)
+            if v:
+                slots["guests_count"] = v
+        # Qolgan maydonlarni ham shu xabardan qidiramiz (bor qiymatga tegmaydi).
+        _extract_customer_slots(message, slots)
+        return _advance_create_customer(slots)
+
     return _reply(_HELP)
+
+
+def _friendly_error(exc: Exception) -> str:
+    """Texnik xatoni foydalanuvchi tushunadigan (va tuzata oladigan) matnga aylantiradi.
+
+    Oldin hamma xato uchun bitta umumiy jumla qaytardik — admin nima notogri
+    ketganini bilolmasdi. Endi eng koʻp uchraydigan sabablar ajratiladi.
+    """
+    low = str(exc).lower()
+    if "not null" in low or "notnullviolation" in low:
+        if "start_date" in low or "end_date" in low:
+            return ("Bazada tur sanasi majburiy ekan. Qaytadan 'tur qosh' deng va "
+                    "boshlanish sanasini korsating (masalan: 2026-08-15).")
+        return ("Bazada bir maydon majburiy, lekin toldirilmadi. "
+                "Malumotlarni toliq kiritib, qaytadan urinib koring.")
+    if "unique" in low or "duplicate" in low:
+        return "Bunday yozuv allaqachon mavjud."
+    if "foreign key" in low:
+        return "Bogliq yozuv topilmadi (masalan filial). Sozlamalarni tekshiring."
+    return "Amalni bajarishda xatolik boldi. Qaytadan urinib koring."
 
 
 async def _execute(db: AsyncSession, user: User, intent: str, slots: dict) -> dict:
@@ -688,12 +1095,16 @@ async def _execute(db: AsyncSession, user: User, intent: str, slots: dict) -> di
             res = await _do_update_price(db, user.company_id, slots)
         elif intent == "set_active":
             res = await _do_set_active(db, user.company_id, slots)
+        elif intent == "update_tour":
+            res = await _do_update_tour(db, user, slots)
+        elif intent == "create_customer":
+            res = await _do_create_customer(db, user, slots)
         else:
             return _reply("Tushunmadim.")
-    except Exception:  # noqa: BLE001 — amal xatosi suhbatni buzmasin
+    except Exception as exc:  # noqa: BLE001 — amal xatosi suhbatni buzmasin
         logger.exception("ML assistant amal xatosi: %s", intent)
         await db.rollback()
-        return _reply("Amalni bajarishda xatolik boldi. Qaytadan urinib koring.")
+        return _reply(_friendly_error(exc))
     # Amal muvaffaqiyatli bajarildi — asl buyruqni oʻrganamiz (tasdiqlangan misol).
     if res.get("actions"):
         await _store().learn(db, user.company_id, str(slots.get("_trigger", "")), intent)
@@ -716,9 +1127,10 @@ async def _do_create(db: AsyncSession, user: User, slots: dict) -> dict:
         return _reply("Narx musbat, kun va joylar kamida 1 boʻlishi kerak.")
 
     start_date: Optional[date] = None
-    if slots.get("start_date"):
+    raw_date = slots.get("start_date")
+    if raw_date and raw_date != _NO_DATE:
         try:
-            start_date = datetime.strptime(str(slots["start_date"]), "%Y-%m-%d").date()
+            start_date = datetime.strptime(str(raw_date), "%Y-%m-%d").date()
         except ValueError:
             start_date = None
     # Sana berilgan boʻlsa tugash sanasini muddatdan hisoblaymiz.
@@ -775,6 +1187,111 @@ async def _do_set_active(db: AsyncSession, cid: int, slots: dict) -> dict:
     await db.commit()
     holat = "faollashtirildi" if is_active else "nofaol qilindi"
     return _reply(f"'{tour.title}' {holat}.", actions=[f"{tour.title} {holat}"])
+
+
+async def _do_update_tour(db: AsyncSession, user: User, slots: dict) -> dict:
+    """Turning bitta maydonini yangilaydi — qolda tahrirlash bilan bir xil yoʻldan."""
+    tour = await _resolve_tour(db, user.company_id, str(slots.get("tour_id") or ""))
+    if not tour:
+        return _reply("Bunday tur topilmadi. Nomini yoki id sini aniq yozing.")
+
+    field = slots.get("field")
+    value = slots.get("value")
+    if not field or value in (None, ""):
+        return _reply("Malumot toliq emas, qaytadan boshlaymiz. 'turni tahrirla' deng.")
+
+    payload: dict[str, Any] = {}
+    if field == "start_date":
+        try:
+            sd = datetime.strptime(str(value), "%Y-%m-%d").date()
+        except ValueError:
+            return _reply("Sanani tushunmadim. Masalan: 2026-08-15")
+        payload["start_date"] = sd
+        # Tugash sanasi turning muddatidan qayta hisoblanadi, aks holda eski
+        # end_date yangi boshlanishdan oldin qolib ketardi.
+        if tour.duration_days:
+            payload["end_date"] = sd + timedelta(days=tour.duration_days)
+    elif field == "price":
+        price = float(value)
+        if price <= 0:
+            return _reply("Narx musbat boʻlishi kerak.")
+        payload["price"] = price
+    elif field in ("duration_days", "available_slots"):
+        n = int(value)
+        if n < 1:
+            return _reply("Qiymat kamida 1 boʻlishi kerak.")
+        payload[field] = n
+        # Muddat oʻzgarsa, sanasi bor turda tugash sanasi ham suriladi.
+        if field == "duration_days" and tour.start_date:
+            payload["end_date"] = tour.start_date + timedelta(days=n)
+    else:
+        text = str(value).strip()
+        if len(text) < 2:
+            return _reply("Qiymat juda qisqa.")
+        payload[field] = text
+
+    try:
+        data = TourUpdate(**payload)
+    except ValidationError:
+        return _reply("Yangi qiymat notogri. Qaytadan urinib koring.")
+
+    # Nom oʻzgarganda xabarda ESKI nomni koʻrsatamiz, aks holda
+    # "'Dubay VIP' turining nomi Dubay VIP ga ozgartirildi" degan gap chiqadi.
+    old_title = tour.title
+    try:
+        result = await TourService(db).update_tour(user, tour.id, data)
+        await db.commit()
+    except HTTPException as exc:
+        await db.rollback()
+        return _reply(str(exc.detail))
+
+    label = _FIELD_LABEL.get(field, field)
+    shown = _format_tour_value(field, value)
+    return _reply(f"Tayyor! '{old_title}' turining {label} {shown} ga ozgartirildi.",
+                  actions=[f"{result.title}: {label} yangilandi"])
+
+
+async def _do_create_customer(db: AsyncSession, user: User, slots: dict) -> dict:
+    """Mijozni qoshadi va uni tanlangan turga bron qiladi (CRM bilan bir xil yoʻl)."""
+    name = str(slots.get("full_name") or "").strip()
+    phone = str(slots.get("phone") or "").strip()
+    tour_id = slots.get("tour_id")
+    if not (name and phone and tour_id):
+        return _reply("Malumot toliq emas, qaytadan boshlaymiz. 'mijoz qosh' deng.")
+
+    try:
+        guests = int(slots.get("guests_count") or 1)
+    except (TypeError, ValueError):
+        guests = 1
+    if guests < 1:
+        return _reply("Kishilar soni kamida 1 boʻlishi kerak.")
+
+    # Email majburiy maydon, lekin tur firmalarida mijozda koʻpincha email
+    # boʻlmaydi — telefondan barqaror va takrorlanmas manzil yasaymiz.
+    email = str(slots.get("email") or "").strip()
+    if not email:
+        email = f"{re.sub(r'[^0-9]', '', phone)}@mijoz.local"
+
+    try:
+        data = CustomerCreateRequest(
+            full_name=name, phone=phone, email=email,
+            tour_id=int(tour_id), guests_count=guests, notes=None,
+        )
+    except ValidationError:
+        return _reply("Malumot notogri. Qaytadan 'mijoz qosh' deng.")
+
+    try:
+        result = await CRMService(db).create_customer(user, data)
+    except HTTPException as exc:
+        await db.rollback()
+        return _reply(str(exc.detail))
+
+    tour_title = slots.get("tour_title") or "tur"
+    return _reply(
+        f"Tayyor! Mijoz '{result.full_name}' qoshildi va '{tour_title}' turiga "
+        f"{guests} kishi uchun bron qilindi.",
+        actions=[f"Mijoz qoshildi: {result.full_name}"],
+    )
 
 
 def _reply(text: str, actions: Optional[list[str]] = None, pending: Optional[dict] = None) -> dict:

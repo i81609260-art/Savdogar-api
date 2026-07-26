@@ -13,6 +13,7 @@ from app.models.integration import (
 )
 from app.models.company import Company, CompanyStatus, CompanyType
 from app.models.company_telegram_bot import CompanyTelegramBot
+from app.models.instagram import InstagramAccount, InstagramThread
 from app.models.notification import Notification
 from app.models.site_visit import SiteVisit
 from app.models.tour import Tour
@@ -34,6 +35,8 @@ __all__ = [
     "CompanyStatus",
     "CompanyType",
     "CompanyTelegramBot",
+    "InstagramAccount",
+    "InstagramThread",
     "Notification",
     "SiteVisit",
     "Tour",
