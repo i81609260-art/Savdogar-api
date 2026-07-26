@@ -259,6 +259,8 @@ async def instagram_status(
         "is_active": acc.is_active,
         "leads_count": leads,
         "token_days_left": days_left,
+        "webhook_events": acc.webhook_events or 0,
+        "last_webhook_at": acc.last_webhook_at.isoformat() if acc.last_webhook_at else None,
         "profile_url": f"https://instagram.com/{acc.ig_username}" if acc.ig_username else None,
     }
 
@@ -650,8 +652,16 @@ def _valid_signature(body: bytes, header: Optional[str]) -> bool:
 @webhook_router.post("/webhook", summary="Instagram webhook", include_in_schema=False)
 async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)) -> dict:
     raw = await request.body()
-    if not _valid_signature(raw, request.headers.get("X-Hub-Signature-256")):
-        # Imzo notogri — soʻrov Meta dan kelmagan.
+    sig = request.headers.get("X-Hub-Signature-256")
+    if not _valid_signature(raw, sig):
+        # Imzo notogri — soʻrov Meta dan kelmagan YOKI serverdagi app secret
+        # Meta konsolidagisi bilan bir xil emas. Ikkinchisi juda koʻp uchraydi,
+        # shuning uchun jim rad etmaymiz — logga yozamiz.
+        logger.warning(
+            "Instagram webhook imzosi mos kelmadi (sarlavha %s, sozlangan secret: %d ta). "
+            "Railway'dagi INSTAGRAM_APP_SECRET Meta konsolidagi bilan bir xilmi?",
+            "bor" if sig else "YOQ", len(settings.webhook_secrets),
+        )
         raise HTTPException(status_code=403, detail="Imzo notogri")
 
     try:
@@ -678,6 +688,13 @@ async def receive_webhook(request: Request, db: AsyncSession = Depends(get_db)) 
                 logger.exception("Instagram izohini ishlashda xato")
                 await db.rollback()
 
+    # Diagnostika hisoblagichlarini saqlaymiz (xabar eʼtiborsiz qoldirilgan
+    # bolsa ham — "webhook keldi" fakti ozi muhim).
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+
     return {"ok": True}
 
 
@@ -701,13 +718,28 @@ async def _account_for_entry(db: AsyncSession, entry: dict) -> Optional[Instagra
     """Webhook entry sidan kompaniyaning ulangan akkauntini topadi."""
     ig_user_id = str(entry.get("id") or "")
     if not ig_user_id:
+        logger.warning("Instagram webhook: entry ichida id yoq: %s", entry)
         return None
-    return (await db.execute(
+    acc = (await db.execute(
         select(InstagramAccount).where(
             InstagramAccount.ig_user_id == ig_user_id,
             InstagramAccount.is_active.is_(True),
         )
     )).scalar_one_or_none()
+    if not acc:
+        # Bu jim otib ketsa "lead kelmadi" muammosini topib bolmaydi:
+        # Meta boshqa ID yuborayotgan bolishi mumkin.
+        known = [r[0] for r in (await db.execute(select(InstagramAccount.ig_user_id))).all()]
+        logger.warning(
+            "Instagram webhook: '%s' ID li akkaunt topilmadi. Bazadagilar: %s",
+            ig_user_id, known or "(yoq)",
+        )
+        return None
+
+    # Diagnostika hisoblagichi — UI da "webhook keldimi?" korinadi.
+    acc.webhook_events = (acc.webhook_events or 0) + 1
+    acc.last_webhook_at = datetime.now(timezone.utc)
+    return acc
 
 
 async def _reply(acc: InstagramAccount, recipient_id: str, text: str) -> None:

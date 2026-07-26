@@ -53,6 +53,13 @@ class InstagramAccount(Base):
     webhook_subscribed: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    # Diagnostika: Meta bizga umuman murojaat qildimi? Busiz "lead kelmadi"
+    # muammosini yechishda qayerda uzilganini bilib bolmaydi.
+    webhook_events: Mapped[int] = mapped_column(Integer, default=0)
+    last_webhook_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

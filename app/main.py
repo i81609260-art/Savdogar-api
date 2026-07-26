@@ -230,6 +230,8 @@ async def lifespan(app: FastAPI):
             # Instagram login yoli qoshilgach — Page majburiy emas.
             "ALTER TABLE instagram_accounts ADD COLUMN login_type VARCHAR(20) DEFAULT 'instagram'",
             "ALTER TABLE instagram_accounts ADD COLUMN token_expires_at TIMESTAMP",
+            "ALTER TABLE instagram_accounts ADD COLUMN webhook_events INTEGER DEFAULT 0",
+            "ALTER TABLE instagram_accounts ADD COLUMN last_webhook_at TIMESTAMP",
             "ALTER TABLE instagram_accounts ALTER COLUMN page_id DROP NOT NULL",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_ig_thread ON instagram_threads (company_id, ig_sender_id)",
             "CREATE INDEX IF NOT EXISTS ix_instagram_threads_sender ON instagram_threads (ig_sender_id)",
