@@ -374,23 +374,42 @@ _UZ_MONTHS = {
 }
 
 
+def _valid_date(y: int, mo: int, d: int) -> Optional[str]:
+    """Haqiqiy sana bolsagina YYYY-MM-DD qaytaradi.
+
+    Oldin tekshiruv yoq edi va "2026-00-00" kabi mavjud bolmagan sana
+    qaytardi — keyin u jimgina None ga aylanib, baza NOT NULL xatosini
+    berardi. Endi yaroqsiz sana darhol None.
+    """
+    try:
+        return date(y, mo, d).isoformat()
+    except ValueError:
+        return None
+
+
 def parse_date(text: str) -> Optional[str]:
     """Sanani YYYY-MM-DD ga keltiradi. Yil berilmasa joriy yildan boshlab tanlaydi."""
     t = _norm(text)
-    m = re.search(r"(\d{4})-(\d{1,2})-(\d{1,2})", t)
+    m = re.search(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b", t)
     if m:
-        return f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
-    m = re.search(r"(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?", t)
+        return _valid_date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    # kk.oo[.yyyy] — atrofida boshqa raqam bolmasligi shart, aks holda
+    # "600.000" (narx) ichidan "00.00" sana sifatida ajratilib ketardi.
+    # Ortidan pul birligi kelsa bu narx, sana emas ("1.5 mln").
+    m = re.search(
+        r"(?<!\d)(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?(?!\d)"
+        r"(?!\s*(?:mln|million|mil|ming|min|so|som|usd|eur)\b)",
+        t,
+    )
     if m:
         d, mo = int(m.group(1)), int(m.group(2))
         y = int(m.group(3)) if m.group(3) else _this_year()
         if y < 100:
             y += 2000
-        return f"{y}-{mo:02d}-{d:02d}"
-    m = re.search(r"(\d{1,2})[-\s]*([a-z]+)", t)
+        return _valid_date(y, mo, d)
+    m = re.search(r"\b(\d{1,2})[-\s]*([a-z]+)", t)
     if m and m.group(2) in _UZ_MONTHS:
-        d, mo = int(m.group(1)), _UZ_MONTHS[m.group(2)]
-        return f"{_this_year()}-{mo:02d}-{d:02d}"
+        return _valid_date(_this_year(), _UZ_MONTHS[m.group(2)], int(m.group(1)))
     return None
 
 
@@ -480,6 +499,21 @@ async def _resolve_tour(db: AsyncSession, cid: int, ref: str) -> Optional[Tour]:
     return None
 
 
+async def _tour_not_found_hint(db: AsyncSession, cid: int) -> str:
+    """Tur topilmasa — mavjudlarini korsatamiz yoki tur yoqligini aytamiz."""
+    rows = (await db.execute(
+        select(Tour.id, Tour.title).where(Tour.company_id == cid)
+        .order_by(Tour.created_at.desc()).limit(5)
+    )).all()
+    if not rows:
+        return ("Sizda hali tur yoq — mijozni turga yozib bolmaydi. "
+                "Avval 'tur qosh' deb tur paket qoshing.")
+    lines = ["Bunday tur topilmadi. Mavjud turlaringiz:"]
+    lines += [f"- #{r[0]} {r[1]}" for r in rows]
+    lines.append("Nomini yoki id sini yozing.")
+    return "\n".join(lines)
+
+
 async def _resolve_and_store(db: AsyncSession, cid: int, slots: dict, ref: str) -> bool:
     """Berilgan matndan turni topib, uning id va nomini slots ga yozadi."""
     tour = await _resolve_tour(db, cid, ref)
@@ -511,8 +545,13 @@ _CREATE_STEPS: list[tuple[str, str]] = [
 ]
 
 
-def _extract_create_slots(text: str, slots: dict) -> None:
-    """Erkin matndan create_tour maydonlarini toʻldiradi."""
+def _extract_create_slots(text: str, slots: dict, with_date: bool = True) -> None:
+    """Erkin matndan create_tour maydonlarini toʻldiradi.
+
+    `with_date=False` — aniq maydon soralayotganda (narx, kun, joy) sanani
+    qidirmaymiz. Aks holda "1.5 mln" kabi javob sana deb talqin qilinib,
+    sana bosqichi jimgina otkazib yuborilardi.
+    """
     dur = parse_int_near(text, "kun", "kunlik")
     if dur:
         slots.setdefault("duration_days", dur)
@@ -522,9 +561,10 @@ def _extract_create_slots(text: str, slots: dict) -> None:
     price = parse_amount(_strip_used(text, dur, seats))
     if price:
         slots.setdefault("price", price)
-    d = parse_date(text)
-    if d:
-        slots.setdefault("start_date", d)
+    if with_date:
+        d = parse_date(text)
+        if d:
+            slots.setdefault("start_date", d)
     city = _detect_city(text)
     if city:
         slots.setdefault("city", city)
@@ -996,8 +1036,9 @@ async def _handle_pending(db: AsyncSession, user: User, message: str, pending: d
                 )
         elif awaiting in ("title", "city"):
             slots[awaiting] = message.strip()
-        # Har ehtimolga qarshi qolgan maydonlarni ham matndan qidiramiz.
-        _extract_create_slots(message, slots)
+        # Qolgan maydonlarni ham matndan qidiramiz, lekin sanani emas —
+        # u faqat oz bosqichida yuqorida ajratiladi.
+        _extract_create_slots(message, slots, with_date=False)
         return _advance_create(slots)
 
     if intent == "update_price":
@@ -1045,7 +1086,9 @@ async def _handle_pending(db: AsyncSession, user: User, message: str, pending: d
     if intent == "create_customer":
         if awaiting == "tour_ref":
             if not await _resolve_and_store(db, cid, slots, message):
-                return _reply("Bunday tur topilmadi. Nomini yoki id sini aniq yozing.",
+                # Mavjud turlarni sanab beramiz — aks holda foydalanuvchi
+                # "topilmadi" xabarini qayta-qayta olib, ilinib qolardi.
+                return _reply(await _tour_not_found_hint(db, cid),
                               pending={"intent": intent, "slots": slots, "stage": "collect", "awaiting": "tour_ref"})
         elif awaiting == "full_name":
             # Telefon/email bir xabarda kelsa ism ichida qolib ketmasin.
@@ -1065,6 +1108,14 @@ async def _handle_pending(db: AsyncSession, user: User, message: str, pending: d
         return _advance_create_customer(slots)
 
     return _reply(_HELP)
+
+
+def _is_missing_date_error(exc: Exception) -> bool:
+    """Baza sanani majburiy deb rad etdimi?"""
+    low = str(exc).lower()
+    return ("not null" in low or "notnullviolation" in low) and (
+        "start_date" in low or "end_date" in low
+    )
 
 
 def _friendly_error(exc: Exception) -> str:
@@ -1104,6 +1155,17 @@ async def _execute(db: AsyncSession, user: User, intent: str, slots: dict) -> di
     except Exception as exc:  # noqa: BLE001 — amal xatosi suhbatni buzmasin
         logger.exception("ML assistant amal xatosi: %s", intent)
         await db.rollback()
+        # Sana majburiy ekan — foydalanuvchini boshiga qaytarmaymiz, shu
+        # yerda sanani sorab, yigilgan malumot ustidan davom etamiz.
+        if intent == "create_tour" and _is_missing_date_error(exc):
+            retry = dict(slots)
+            retry.pop("start_date", None)
+            return _reply(
+                "Bazada tur sanasi majburiy ekan. Boshlanish sanasini yozing "
+                "(masalan: 2026-08-15) — qolgan malumotlar saqlanib turibdi.",
+                pending={"intent": "create_tour", "slots": retry,
+                         "stage": "collect", "awaiting": "start_date"},
+            )
         return _reply(_friendly_error(exc))
     # Amal muvaffaqiyatli bajarildi — asl buyruqni oʻrganamiz (tasdiqlangan misol).
     if res.get("actions"):
