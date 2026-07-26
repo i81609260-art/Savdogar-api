@@ -209,6 +209,9 @@ async def instagram_status(
             "connected": False,
             "server_configured": configured,
             "oauth_available": oauth_ready,
+            # Meta konsoliga aynan shuni qoyish kerak — taxmin qilinmasin.
+            "oauth_redirect_uri": settings.instagram_oauth_redirect,
+            "webhook_url": settings.savdogar_public_url.rstrip("/") + "/api/instagram/webhook",
         }
 
     days_left = None
@@ -227,6 +230,7 @@ async def instagram_status(
         "connected": True,
         "server_configured": configured,
         "oauth_available": oauth_ready,
+        "oauth_redirect_uri": settings.instagram_oauth_redirect,
         "login_type": acc.login_type,
         "ig_username": acc.ig_username,
         "page_name": acc.page_name,
