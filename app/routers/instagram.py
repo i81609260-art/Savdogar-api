@@ -18,10 +18,14 @@ import hashlib
 import hmac
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Optional
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
+from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -75,7 +79,58 @@ def _graph_error(resp: dict) -> Optional[str]:
     err = resp.get("error")
     if not err:
         return None
+    if isinstance(err, str):
+        return resp.get("error_message") or err
     return err.get("message") or "Graph API xatosi"
+
+
+# ── Instagram Business Login (OAuth) ──────────────────────────────────────────
+
+IG_AUTH_URL = "https://www.instagram.com/oauth/authorize"
+IG_TOKEN_URL = "https://api.instagram.com/oauth/access_token"
+
+# Konsoldagi 1-qadamda qoshilgan ruxsatlar bilan bir xil.
+IG_SCOPES = (
+    "instagram_business_basic,"
+    "instagram_business_manage_messages,"
+    "instagram_business_manage_comments"
+)
+
+
+def _make_state(company_id: int) -> str:
+    """OAuth state — imzolangan, 15 daqiqa yashaydigan token.
+
+    Qaytish nuqtasida Authorization sarlavhasi bolmaydi (bu brauzer
+    yonaltirishi), shuning uchun qaysi kompaniya ulanayotganini AYNAN shu
+    imzolangan state aytadi. Imzosiz bolsa istalgan odam ozining Instagram
+    akkauntini begona kompaniyaga biriktirib qoyishi mumkin edi.
+    """
+    payload = {
+        "cid": company_id,
+        "typ": "ig_oauth",
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=15),
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
+
+
+def _read_state(state: str) -> Optional[int]:
+    try:
+        data = jwt.decode(state, settings.secret_key, algorithms=[settings.algorithm])
+    except JWTError:
+        return None
+    if data.get("typ") != "ig_oauth":
+        return None
+    cid = data.get("cid")
+    return int(cid) if cid else None
+
+
+def _front_redirect(status: str, message: str = "") -> RedirectResponse:
+    """Admin panelning Integratsiyalar sahifasiga natija bilan qaytaramiz."""
+    base = settings.frontend_url.rstrip("/") + "/admin/integrations"
+    params = {"instagram": status}
+    if message:
+        params["msg"] = message[:200]
+    return RedirectResponse(url=f"{base}?{urlencode(params)}", status_code=303)
 
 
 # ── Admin endpointlari ────────────────────────────────────────────────────────
@@ -147,8 +202,19 @@ async def instagram_status(
 
     # Sozlama tayyorligini ham qaytaramiz — admin nima yetishmayotganini korsin.
     configured = bool(settings.webhook_secrets and settings.instagram_verify_token)
+    # "Instagram bilan kirish" tugmasi faqat OAuth sozlangan bolsa korinadi.
+    oauth_ready = bool(settings.instagram_app_id and settings.instagram_app_secret)
     if not acc:
-        return {"connected": False, "server_configured": configured}
+        return {
+            "connected": False,
+            "server_configured": configured,
+            "oauth_available": oauth_ready,
+        }
+
+    days_left = None
+    if acc.token_expires_at:
+        delta = acc.token_expires_at - datetime.now(timezone.utc)
+        days_left = max(0, delta.days)
 
     leads = (await db.execute(
         select(func.count(TourRequest.id)).where(
@@ -160,17 +226,131 @@ async def instagram_status(
     return {
         "connected": True,
         "server_configured": configured,
+        "oauth_available": oauth_ready,
         "login_type": acc.login_type,
         "ig_username": acc.ig_username,
         "page_name": acc.page_name,
         "webhook_subscribed": acc.webhook_subscribed,
         "is_active": acc.is_active,
         "leads_count": leads,
+        "token_days_left": days_left,
         "profile_url": f"https://instagram.com/{acc.ig_username}" if acc.ig_username else None,
     }
 
 
-@admin_router.post("/connect", summary="Instagram akkauntni ulash")
+@admin_router.get("/login-url", summary="Instagram bilan kirish havolasi")
+async def instagram_login_url(
+    current_user: User = Depends(role_required(UserRole.ADMIN)),
+) -> dict:
+    """Admin shu havolaga otadi, Instagram'da ruxsat beradi va qaytadi."""
+    if not (settings.instagram_app_id and settings.instagram_app_secret):
+        raise HTTPException(
+            status_code=503,
+            detail="Server tomonda INSTAGRAM_APP_ID va INSTAGRAM_APP_SECRET sozlanmagan.",
+        )
+    params = {
+        "client_id": settings.instagram_app_id,
+        "redirect_uri": settings.instagram_oauth_redirect,
+        "response_type": "code",
+        "scope": IG_SCOPES,
+        "state": _make_state(current_user.company_id),
+    }
+    return {
+        "url": f"{IG_AUTH_URL}?{urlencode(params)}",
+        "redirect_uri": settings.instagram_oauth_redirect,
+    }
+
+
+@webhook_router.get("/oauth/callback", summary="Instagram OAuth qaytish", include_in_schema=False)
+async def instagram_oauth_callback(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Instagram ruxsatdan keyin shu yerga qaytaradi (brauzer yonaltirishi)."""
+    q = request.query_params
+    if q.get("error"):
+        return _front_redirect("error", q.get("error_description") or q["error"])
+
+    code = q.get("code")
+    company_id = _read_state(q.get("state") or "")
+    if not code or not company_id:
+        return _front_redirect("error", "Sorov yaroqsiz yoki muddati otgan. Qaytadan urinib koring.")
+
+    # 1) code -> qisqa muddatli token
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.post(IG_TOKEN_URL, data={
+            "client_id": settings.instagram_app_id,
+            "client_secret": settings.instagram_app_secret,
+            "grant_type": "authorization_code",
+            "redirect_uri": settings.instagram_oauth_redirect,
+            "code": code,
+        })
+        try:
+            short = r.json()
+        except ValueError:
+            short = {"error": f"HTTP {r.status_code}"}
+    if (err := _graph_error(short)) or not short.get("access_token"):
+        logger.warning("Instagram token almashuvi muvaffaqiyatsiz: %s", short)
+        return _front_redirect("error", err or "Token olinmadi")
+
+    ig_user_id = str(short.get("user_id") or "")
+
+    # 2) qisqa -> uzoq muddatli (~60 kun)
+    long = await _get("access_token", short["access_token"], host=IG_HOST,
+                      grant_type="ig_exchange_token",
+                      client_secret=settings.instagram_app_secret)
+    token = long.get("access_token") or short["access_token"]
+    expires_in = int(long.get("expires_in") or 0)
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)) if expires_in else None
+
+    # 3) profil maʼlumoti
+    me = await _get("me", token, host=IG_HOST, fields="user_id,username")
+    ig_user_id = str(me.get("user_id") or me.get("id") or ig_user_id)
+    username = me.get("username")
+    if not ig_user_id:
+        return _front_redirect("error", "Instagram akkaunt aniqlanmadi")
+
+    # 4) boshqa kompaniya band qilmaganini tekshiramiz
+    taken = (await db.execute(
+        select(InstagramAccount).where(
+            InstagramAccount.ig_user_id == ig_user_id,
+            InstagramAccount.company_id != company_id,
+        )
+    )).scalar_one_or_none()
+    if taken:
+        return _front_redirect("error", "Bu Instagram akkaunt boshqa kompaniyaga ulangan")
+
+    # 5) webhook obunasi
+    sub = await _post(f"{ig_user_id}/subscribed_apps", token, host=IG_HOST,
+                      subscribed_fields="messages,comments")
+    subscribed = bool(sub.get("success"))
+    if not subscribed:
+        logger.warning("Instagram webhook obunasi ulgurmadi: %s", sub)
+
+    # 6) saqlaymiz
+    acc = (await db.execute(
+        select(InstagramAccount).where(InstagramAccount.company_id == company_id)
+    )).scalar_one_or_none()
+    if acc:
+        await db.delete(acc)
+        await db.flush()
+    db.add(InstagramAccount(
+        company_id=company_id,
+        login_type="instagram",
+        ig_user_id=ig_user_id,
+        ig_username=username,
+        page_id=None,
+        page_name=None,
+        page_access_token=token,
+        token_expires_at=expires_at,
+        webhook_subscribed=subscribed,
+    ))
+    await db.commit()
+
+    return _front_redirect("ok", username or "")
+
+
+@admin_router.post("/connect", summary="Instagram akkauntni qolda ulash (zaxira)")
 async def connect_instagram(
     payload: ConnectRequest,
     current_user: User = Depends(role_required(UserRole.ADMIN)),

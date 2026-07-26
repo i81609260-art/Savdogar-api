@@ -44,6 +44,11 @@ class InstagramAccount(Base):
     page_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     # Instagram yolida bu Instagram User access token, Facebook yolida Page token.
     page_access_token: Mapped[str] = mapped_column(String(500))
+    # Uzoq muddatli token ~60 kun yashaydi. Muddati yaqinlashganda UI da
+    # ogohlantiramiz va yangilash tugmasi korsatamiz.
+    token_expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     webhook_subscribed: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

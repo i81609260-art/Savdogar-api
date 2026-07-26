@@ -209,6 +209,7 @@ async def lifespan(app: FastAPI):
                 page_id VARCHAR(50),
                 page_name VARCHAR(255),
                 page_access_token VARCHAR(500) NOT NULL,
+                token_expires_at TIMESTAMP,
                 webhook_subscribed BOOLEAN NOT NULL DEFAULT 0,
                 is_active BOOLEAN NOT NULL DEFAULT 1,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -228,6 +229,7 @@ async def lifespan(app: FastAPI):
             )""",
             # Instagram login yoli qoshilgach — Page majburiy emas.
             "ALTER TABLE instagram_accounts ADD COLUMN login_type VARCHAR(20) DEFAULT 'instagram'",
+            "ALTER TABLE instagram_accounts ADD COLUMN token_expires_at TIMESTAMP",
             "ALTER TABLE instagram_accounts ALTER COLUMN page_id DROP NOT NULL",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_ig_thread ON instagram_threads (company_id, ig_sender_id)",
             "CREATE INDEX IF NOT EXISTS ix_instagram_threads_sender ON instagram_threads (ig_sender_id)",

@@ -64,11 +64,21 @@ class Settings(BaseSettings):
     instagram_verify_token: str = ""
     # Graph API versiyasi.
     facebook_graph_version: str = "v21.0"
+    # OAuth qaytish manzili. Bosh bolsa savdogar_public_url dan yasaladi.
+    # Meta konsolidagi "Valid OAuth Redirect URIs" bilan AYNAN mos bolishi shart.
+    instagram_redirect_uri: str = ""
 
     @property
     def webhook_secrets(self) -> List[str]:
         """Webhook imzosini tekshirishda sinaladigan barcha secret'lar."""
         return [s for s in (self.instagram_app_secret, self.facebook_app_secret) if s]
+
+    @property
+    def instagram_oauth_redirect(self) -> str:
+        """Instagram Business Login qaytish manzili."""
+        if self.instagram_redirect_uri:
+            return self.instagram_redirect_uri
+        return self.savdogar_public_url.rstrip("/") + "/api/instagram/oauth/callback"
 
     # Telegram bot
     telegram_bot_token: str = ""
