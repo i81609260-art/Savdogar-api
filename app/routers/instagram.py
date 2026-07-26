@@ -96,8 +96,23 @@ IG_SCOPES = (
     "instagram_business_manage_comments"
 )
 
+# Facebook Login yoli — Page orqali. Meta'da bu ALOHIDA OAuth tizimi va
+# redirect URI royxati ham alohida.
+FB_SCOPES = (
+    "instagram_basic,"
+    "instagram_manage_messages,"
+    "instagram_manage_comments,"
+    "pages_show_list,"
+    "pages_manage_metadata,"
+    "pages_read_engagement"
+)
 
-def _make_state(company_id: int) -> str:
+
+def _fb_auth_url() -> str:
+    return f"https://www.facebook.com/{settings.facebook_graph_version}/dialog/oauth"
+
+
+def _make_state(company_id: int, provider: str = "instagram") -> str:
     """OAuth state — imzolangan, 15 daqiqa yashaydigan token.
 
     Qaytish nuqtasida Authorization sarlavhasi bolmaydi (bu brauzer
@@ -107,21 +122,25 @@ def _make_state(company_id: int) -> str:
     """
     payload = {
         "cid": company_id,
+        "prv": provider,
         "typ": "ig_oauth",
         "exp": datetime.now(timezone.utc) + timedelta(minutes=15),
     }
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
-def _read_state(state: str) -> Optional[int]:
+def _read_state(state: str) -> tuple[Optional[int], str]:
+    """(company_id, provider) qaytaradi. Yaroqsiz bolsa (None, '')."""
     try:
         data = jwt.decode(state, settings.secret_key, algorithms=[settings.algorithm])
     except JWTError:
-        return None
+        return None, ""
     if data.get("typ") != "ig_oauth":
-        return None
+        return None, ""
     cid = data.get("cid")
-    return int(cid) if cid else None
+    if not cid:
+        return None, ""
+    return int(cid), data.get("prv") or "instagram"
 
 
 def _front_redirect(status: str, message: str = "") -> RedirectResponse:
@@ -202,13 +221,15 @@ async def instagram_status(
 
     # Sozlama tayyorligini ham qaytaramiz — admin nima yetishmayotganini korsin.
     configured = bool(settings.webhook_secrets and settings.instagram_verify_token)
-    # "Instagram bilan kirish" tugmasi faqat OAuth sozlangan bolsa korinadi.
+    # Har bir yol uchun alohida: qaysi kalitlar sozlangan bolsa osha tugma ochiq.
     oauth_ready = bool(settings.instagram_app_id and settings.instagram_app_secret)
+    fb_oauth_ready = bool(settings.facebook_app_id and settings.facebook_app_secret)
     if not acc:
         return {
             "connected": False,
             "server_configured": configured,
             "oauth_available": oauth_ready,
+            "facebook_oauth_available": fb_oauth_ready,
             # Meta konsoliga aynan shuni qoyish kerak — taxmin qilinmasin.
             "oauth_redirect_uri": settings.instagram_oauth_redirect,
             "webhook_url": settings.savdogar_public_url.rstrip("/") + "/api/instagram/webhook",
@@ -242,11 +263,34 @@ async def instagram_status(
     }
 
 
-@admin_router.get("/login-url", summary="Instagram bilan kirish havolasi")
+@admin_router.get("/login-url", summary="Ulash havolasi (instagram yoki facebook)")
 async def instagram_login_url(
+    provider: str = "instagram",
     current_user: User = Depends(role_required(UserRole.ADMIN)),
 ) -> dict:
-    """Admin shu havolaga otadi, Instagram'da ruxsat beradi va qaytadi."""
+    """Admin shu havolaga otadi, ruxsat beradi va ozi qaytadi.
+
+    provider="instagram" — Instagram Login (Page kerak emas)
+    provider="facebook"  — Facebook Login (Page orqali)
+    """
+    provider = (provider or "instagram").lower()
+    redirect = settings.instagram_oauth_redirect
+
+    if provider == "facebook":
+        if not (settings.facebook_app_id and settings.facebook_app_secret):
+            raise HTTPException(
+                status_code=503,
+                detail="Server tomonda FACEBOOK_APP_ID va FACEBOOK_APP_SECRET sozlanmagan.",
+            )
+        params = {
+            "client_id": settings.facebook_app_id,
+            "redirect_uri": redirect,
+            "response_type": "code",
+            "scope": FB_SCOPES,
+            "state": _make_state(current_user.company_id, "facebook"),
+        }
+        return {"url": f"{_fb_auth_url()}?{urlencode(params)}", "redirect_uri": redirect}
+
     if not (settings.instagram_app_id and settings.instagram_app_secret):
         raise HTTPException(
             status_code=503,
@@ -254,18 +298,112 @@ async def instagram_login_url(
         )
     params = {
         "client_id": settings.instagram_app_id,
-        "redirect_uri": settings.instagram_oauth_redirect,
+        "redirect_uri": redirect,
         "response_type": "code",
         "scope": IG_SCOPES,
-        "state": _make_state(current_user.company_id),
+        "state": _make_state(current_user.company_id, "instagram"),
     }
-    return {
-        "url": f"{IG_AUTH_URL}?{urlencode(params)}",
-        "redirect_uri": settings.instagram_oauth_redirect,
-    }
+    return {"url": f"{IG_AUTH_URL}?{urlencode(params)}", "redirect_uri": redirect}
 
 
-@webhook_router.get("/oauth/callback", summary="Instagram OAuth qaytish", include_in_schema=False)
+async def _save_account(db: AsyncSession, company_id: int, **fields) -> None:
+    """Kompaniyaning akkauntini almashtiradi (bitta kompaniya — bitta akkaunt)."""
+    acc = (await db.execute(
+        select(InstagramAccount).where(InstagramAccount.company_id == company_id)
+    )).scalar_one_or_none()
+    if acc:
+        await db.delete(acc)
+        await db.flush()
+    db.add(InstagramAccount(company_id=company_id, **fields))
+    await db.commit()
+
+
+async def _taken_by_other(db: AsyncSession, ig_user_id: str, company_id: int) -> bool:
+    return bool((await db.execute(
+        select(InstagramAccount).where(
+            InstagramAccount.ig_user_id == ig_user_id,
+            InstagramAccount.company_id != company_id,
+        )
+    )).scalar_one_or_none())
+
+
+async def _finish_facebook_oauth(db: AsyncSession, company_id: int, code: str):
+    """Facebook Login yoli: code -> user token -> Page token -> IG akkaunt."""
+    redirect = settings.instagram_oauth_redirect
+
+    # 1) code -> qisqa muddatli user token
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.get(_graph("oauth/access_token", FB_HOST), params={
+            "client_id": settings.facebook_app_id,
+            "client_secret": settings.facebook_app_secret,
+            "redirect_uri": redirect,
+            "code": code,
+        })
+        try:
+            tok = r.json()
+        except ValueError:
+            tok = {"error": {"message": f"HTTP {r.status_code}"}}
+    if (err := _graph_error(tok)) or not tok.get("access_token"):
+        logger.warning("Facebook token almashuvi muvaffaqiyatsiz: %s", tok)
+        return _front_redirect("error", err or "Token olinmadi")
+
+    # 2) uzoq muddatli user token (~60 kun) — Page tokenlari ham shundan uzayadi
+    long = await _get("oauth/access_token", "", host=FB_HOST,
+                      grant_type="fb_exchange_token",
+                      client_id=settings.facebook_app_id,
+                      client_secret=settings.facebook_app_secret,
+                      fb_exchange_token=tok["access_token"])
+    user_token = long.get("access_token") or tok["access_token"]
+    expires_in = int(long.get("expires_in") or 0)
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)) if expires_in else None
+
+    # 3) Instagram Business akkaunti ulangan Page ni topamiz
+    pages = await _get("me/accounts", user_token, host=FB_HOST,
+                       fields="id,name,access_token,instagram_business_account{id,username}")
+    if (err := _graph_error(pages)):
+        return _front_redirect("error", f"Page royxati olinmadi: {err}")
+
+    chosen = None
+    for p in pages.get("data", []) or []:
+        if (p.get("instagram_business_account") or {}).get("id"):
+            chosen = p
+            break
+    if not chosen:
+        return _front_redirect(
+            "error",
+            "Instagram Business akkaunti ulangan Facebook Page topilmadi. "
+            "Instagram akkauntni Professional (Business) ga otkazib, Page ga bogʻlang.",
+        )
+
+    iba = chosen["instagram_business_account"]
+    ig_user_id = str(iba["id"])
+    page_token = chosen.get("access_token") or user_token
+
+    if await _taken_by_other(db, ig_user_id, company_id):
+        return _front_redirect("error", "Bu Instagram akkaunt boshqa kompaniyaga ulangan")
+
+    # 4) Page ni webhook'ga obuna qilamiz
+    sub = await _post(f"{chosen['id']}/subscribed_apps", page_token, host=FB_HOST,
+                      subscribed_fields="messages,comments")
+    subscribed = bool(sub.get("success"))
+    if not subscribed:
+        logger.warning("Facebook webhook obunasi ulgurmadi: %s", sub)
+
+    await _save_account(
+        db, company_id,
+        login_type="facebook",
+        ig_user_id=ig_user_id,
+        ig_username=iba.get("username"),
+        page_id=str(chosen["id"]),
+        page_name=chosen.get("name"),
+        page_access_token=page_token,
+        token_expires_at=expires_at,
+        webhook_subscribed=subscribed,
+    )
+    return _front_redirect("ok", iba.get("username") or chosen.get("name") or "")
+
+
+@webhook_router.get("/oauth/callback", summary="OAuth qaytish", include_in_schema=False)
 async def instagram_oauth_callback(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -276,9 +414,12 @@ async def instagram_oauth_callback(
         return _front_redirect("error", q.get("error_description") or q["error"])
 
     code = q.get("code")
-    company_id = _read_state(q.get("state") or "")
+    company_id, provider = _read_state(q.get("state") or "")
     if not code or not company_id:
         return _front_redirect("error", "Sorov yaroqsiz yoki muddati otgan. Qaytadan urinib koring.")
+
+    if provider == "facebook":
+        return await _finish_facebook_oauth(db, company_id, code)
 
     # 1) code -> qisqa muddatli token
     async with httpx.AsyncClient(timeout=20) as client:
