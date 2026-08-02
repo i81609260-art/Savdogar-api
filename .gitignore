@@ -5,5 +5,6 @@ venv/
 .env
 *.db
 uploads/
+private/
 .pytest_cache/
 htmlcov/

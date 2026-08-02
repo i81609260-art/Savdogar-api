@@ -1,10 +1,13 @@
 """Company settings — Company info & website customization."""
 
 import json
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.company import Company
@@ -12,6 +15,7 @@ from app.models.user import User
 from app.schemas.company import CompanyInfoUpdate, WebsiteCustomizationRequest, WebsiteCustomizationResponse
 
 router = APIRouter(prefix="/api/admin/company", tags=["Company Settings"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/info", summary="Get company information")
@@ -59,6 +63,47 @@ async def update_company_info(
     await db.commit()
 
     return {"success": True, "message": "Kompaniya ma'lumoti saqlandi", "company_id": current_user.company_id}
+
+
+async def _gemini_css(instruction: str) -> dict:
+    """Buyruqni Gemini'ga yuborib CSS oladi. Kalit serverda qoladi.
+
+    Ilgari bu chaqiruv brauzerdan `NEXT_PUBLIC_GEMINI_API_KEY` bilan
+    bajarilardi — ya'ni kalit JS bundle ichida hammaga ochiq edi va istalgan
+    tashrifchi uni olib, hisobingiz hisobidan foydalanishi mumkin edi.
+    """
+    import httpx
+
+    settings = get_settings()
+    if not settings.gemini_api_key:
+        return {}
+
+    prompt = (
+        "Siz veb-sayt dizayni uchun CSS generatorsiz. Foydalanuvchi buyrug'i: "
+        f'"{instruction}". Faqat CSS qoidalarini qaytaring, boshqa matnsiz.'
+    )
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{settings.gemini_model}:generateContent"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.post(
+                url,
+                params={"key": settings.gemini_api_key},
+                json={"contents": [{"parts": [{"text": prompt}]}]},
+            )
+        if resp.status_code != 200:
+            logger.warning("Gemini CSS xatosi %s", resp.status_code)
+            return {}
+        text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception as exc:  # noqa: BLE001 — AI yo'q bo'lsa ham ishlashi kerak
+        logger.warning("Gemini CSS olinmadi: %s", exc)
+        return {}
+
+    css = text.strip().removeprefix("```css").removeprefix("```").removesuffix("```")
+    css = css.strip()
+    return {"css": css} if css else {}
 
 
 @router.post("/website/customize", response_model=WebsiteCustomizationResponse, summary="AI website customization")
@@ -122,6 +167,10 @@ async def customize_website(
         if "qizil" in instruction or "red" in instruction:
             changes["button_color"] = "#ff0000"
             changes["css"] = "button { background-color: #ff0000; }"
+
+    if not changes:
+        # Kalit so'zlar mos kelmadi — Gemini'dan so'raymiz (kalit serverda).
+        changes = await _gemini_css(data.instruction)
 
     if not changes:
         return WebsiteCustomizationResponse(

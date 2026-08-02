@@ -1,5 +1,7 @@
 """Per-company Telegram bot endpoints: connect, disconnect, status, webhook."""
 
+import hmac
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Body
 from pydantic import BaseModel
@@ -97,9 +99,21 @@ async def connect_bot(
     db.add(bot)
     await db.flush()
 
-    # Set webhook
-    webhook_url = f"{settings.savdogar_public_url}/api/telegram/company-webhook/{token}"
-    wh = await _tg(token, "setWebhook", url=webhook_url)
+    # Webhook manzilida bot TOKENI emas, undan hosil qilingan taxallus turadi.
+    # URL server/proxy loglariga tushadi — token o'sha yerda ochilib qolsa,
+    # log'ni ko'rgan odam botni to'liq egallab olardi. Qo'shimcha himoya
+    # sifatida Telegram har so'rovda `secret_token` sarlavhasini yuboradi.
+    webhook_url = (
+        f"{settings.savdogar_public_url.rstrip('/')}"
+        f"/api/telegram/company-webhook/{settings.webhook_id_for(token)}"
+    )
+    wh = await _tg(
+        token,
+        "setWebhook",
+        url=webhook_url,
+        secret_token=settings.telegram_webhook_secret,
+        drop_pending_updates=True,
+    )
     bot.webhook_set = wh.get("ok", False)
 
     await db.commit()
@@ -136,27 +150,44 @@ async def disconnect_bot(
 # ── Webhook handler ────────────────────────────────────────────────────────────
 
 @webhook_router.post(
-    "/company-webhook/{bot_token}",
+    "/company-webhook/{webhook_id}",
     summary="Company bot webhook (Telegram chaqiradi)",
     include_in_schema=False,
 )
 async def company_webhook(
-    bot_token: str,
+    webhook_id: str,
     request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
+    """Telegram yuborgan yangilanishni qabul qiladi.
+
+    `webhook_id` — bot tokenidan SECRET_KEY bilan hosil qilingan taxallus.
+    Eski, tokenning o'zi yozilgan manzil ham vaqtincha qabul qilinadi, aks
+    holda hali qayta ulanmagan botlar to'satdan ishlamay qolardi. Bot
+    "Qayta ulash" tugmasi bosilgach yangi manzilga o'tadi.
+    """
     result = await db.execute(
-        select(CompanyTelegramBot).where(
-            CompanyTelegramBot.bot_token == bot_token,
-            CompanyTelegramBot.is_active.is_(True),
-        )
+        select(CompanyTelegramBot).where(CompanyTelegramBot.is_active.is_(True))
     )
-    bot = result.scalar_one_or_none()
-    if not bot:
-        return {"ok": False}
+    bots = result.scalars().all()
+
+    bot = next(
+        (b for b in bots if settings.webhook_id_for(b.bot_token) == webhook_id),
+        None,
+    )
+    if bot:
+        # Yangi manzil — `secret_token` majburiy tekshiriladi.
+        secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+        if not hmac.compare_digest(secret or "", settings.telegram_webhook_secret):
+            return {"ok": False}
+    else:
+        # Eski manzil (token URL'da): faqat mos bot topilsa qabul qilamiz.
+        bot = next((b for b in bots if b.bot_token == webhook_id), None)
+        if not bot:
+            return {"ok": False}
 
     update = await request.json()
-    await _handle_company_update(bot_token, bot.company_id, update, db)
+    await _handle_company_update(bot.bot_token, bot.company_id, update, db)
     return {"ok": True}
 
 

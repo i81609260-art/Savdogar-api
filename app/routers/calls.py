@@ -7,6 +7,7 @@ from typing import List, Optional
 
 import aiofiles
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +22,16 @@ from app.services import call_analysis
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/calls", tags=["Call Analysis"])
 settings = get_settings()
+
+# Yozuvlar `/uploads` dan TARQATILMAYDI. Mijoz bilan bo'lgan suhbat — eng
+# maxfiy ma'lumot; ilgari havolani bilgan istalgan odam uni yuklab olardi.
+# Endi fayllar maxfiy papkada yotadi va faqat shu router orqali, o'z
+# firmasining xodimiga beriladi.
+AUDIO_URL_PREFIX = "/api/calls/audio/"
+
+
+def _audio_dir() -> str:
+    return os.path.join(settings.private_dir, "calls")
 
 _ALLOWED = {
     ".webm": "audio/webm",
@@ -158,7 +169,7 @@ async def upload_call(
             detail=f"Audio {settings.max_audio_upload_mb}MB dan oshmasligi kerak",
         )
 
-    upload_path = os.path.join(settings.persistent_upload_dir, "calls")
+    upload_path = _audio_dir()
     os.makedirs(upload_path, exist_ok=True)
     filename = f"{uuid.uuid4()}{ext}"
     async with aiofiles.open(os.path.join(upload_path, filename), "wb") as f:
@@ -172,7 +183,7 @@ async def upload_call(
         request_id=request_id,
         title=(title or "").strip() or None,
         phone=(phone or "").strip() or None,
-        file_url=f"/uploads/calls/{filename}",
+        file_url=f"{AUDIO_URL_PREFIX}{filename}",
         duration_sec=duration_sec,
         status="tahlilda",
     )
@@ -208,6 +219,45 @@ async def list_calls(
     return [_to_out(c) for c in result.scalars().all()]
 
 
+@router.get("/audio/{filename}", summary="Yozuvni tinglash (himoyalangan)")
+async def get_call_audio(
+    filename: str,
+    current_user: User = Depends(role_required(UserRole.ADMIN, UserRole.OPERATOR)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Audio faylni faqat o'sha firmaning xodimiga qaytaradi.
+
+    Fayl nomi bazadagi yozuv orqali tekshiriladi — ya'ni diskdagi ixtiyoriy
+    yo'lni so'rab bo'lmaydi (`../` kabi hiylalar ham ishlamaydi, chunki
+    so'ralgan nom aynan mos yozuv topilishi shart).
+    """
+    if not current_user.company_id:
+        raise HTTPException(status_code=400, detail="Kompaniya topilmadi")
+
+    query = select(CallRecording).where(
+        CallRecording.file_url == f"{AUDIO_URL_PREFIX}{filename}",
+        CallRecording.company_id == current_user.company_id,
+    )
+    scope = _branch_scope(current_user)
+    if scope is not None:
+        query = query.where(scope)
+
+    call = (await db.execute(query)).scalar_one_or_none()
+    if not call:
+        raise HTTPException(status_code=404, detail="Yozuv topilmadi")
+
+    path = os.path.join(_audio_dir(), os.path.basename(filename))
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Audio fayl topilmadi")
+
+    ext = os.path.splitext(filename)[1].lower()
+    return FileResponse(
+        path,
+        media_type=_ALLOWED.get(ext, "application/octet-stream"),
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
 async def _get_owned(
     db: AsyncSession, call_id: int, current_user: User
 ) -> CallRecording:
@@ -235,9 +285,7 @@ async def reanalyze_call(
     """Saqlangan audio'ni qaytadan tahlil qilish (limit tugagan bo'lsa qo'l keladi)."""
     call = await _get_owned(db, call_id, current_user)
 
-    path = os.path.join(
-        settings.persistent_upload_dir, "calls", os.path.basename(call.file_url)
-    )
+    path = os.path.join(_audio_dir(), os.path.basename(call.file_url))
     if not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Audio fayl serverda topilmadi")
 
@@ -262,9 +310,7 @@ async def delete_call(
     """Yozuvni va audio faylni o'chirish."""
     call = await _get_owned(db, call_id, current_user)
 
-    path = os.path.join(
-        settings.persistent_upload_dir, "calls", os.path.basename(call.file_url)
-    )
+    path = os.path.join(_audio_dir(), os.path.basename(call.file_url))
     try:
         if os.path.exists(path):
             os.remove(path)

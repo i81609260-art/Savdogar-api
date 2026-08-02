@@ -13,6 +13,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.models.company import Company
 from app.schemas.company import CompanyResponse
+from app.utils.images import save_image
 from app.utils.limiter import limiter
 
 router = APIRouter(prefix="/api/companies", tags=["Companies"])
@@ -117,24 +118,10 @@ async def upload_logo(
     file: UploadFile = File(...),
 ) -> dict:
     """Upload a company logo image and return its URL. No auth required (used during registration)."""
-    content_type = file.content_type or ""
-    if content_type not in ALLOWED_IMAGE_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail="Faqat rasm fayllari qabul qilinadi (JPEG, PNG, WEBP, GIF)",
-        )
-
-    content = await file.read()
-    if len(content) > MAX_SIZE_BYTES:
-        raise HTTPException(status_code=400, detail="Fayl hajmi 5 MB dan oshmasligi kerak")
-
-    os.makedirs(settings.upload_dir, exist_ok=True)
-    ext = EXT_BY_TYPE[content_type]
-    filename = f"logo_{uuid.uuid4()}{ext}"
-    filepath = os.path.join(settings.upload_dir, filename)
-
-    async with aiofiles.open(filepath, "wb") as f:
-        await f.write(content)
-
+    # content_type'ga ishonmaymiz — uni mijoz yuboradi. save_image fayl
+    # boshidagi imzoni tekshiradi va hajmni o'qishdan OLDIN cheklaydi.
+    path = await save_image(
+        file, settings.persistent_upload_dir, MAX_SIZE_BYTES, prefix="logo_"
+    )
     api_base = settings.savdogar_public_url.rstrip("/")
-    return {"url": f"{api_base}/uploads/{filename}"}
+    return {"url": f"{api_base}{path}"}

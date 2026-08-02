@@ -3,6 +3,8 @@
 import pytest
 from httpx import AsyncClient
 
+from app.config import get_settings
+
 
 @pytest.mark.asyncio
 async def test_health(client: AsyncClient):
@@ -13,19 +15,24 @@ async def test_health(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_admin_login(client: AsyncClient):
-    """Admin can login with credentials."""
+    """Login formasiga "admin" yozilsa superadmin emailiga o'giriladi."""
+    settings = get_settings()
     response = await client.post(
         "/api/auth/login",
-        json={"email": "admin", "password": "admin123"},
+        json={
+            "email": settings.superadmin_login_alias,
+            "password": settings.superadmin_password,
+        },
     )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     data = response.json()
     assert "access_token" in data
-    assert data["user"]["role"] == "admin"
+    assert data["user"]["role"] == "superadmin"
+    assert data["user"]["email"] == settings.superadmin_email
 
 
 @pytest.mark.asyncio
-async def test_register_company(client: AsyncClient):
+async def test_register_company(client: AsyncClient, db_session):
     """Company registration creates pending application."""
     response = await client.post(
         "/api/auth/register",
@@ -34,13 +41,28 @@ async def test_register_company(client: AsyncClient):
             "company_city": "Toshkent",
             "company_phone": "+998901234567",
             "company_email": "company@test.uz",
-            "admin_email": "admin@test.uz",
+            "admin_email": "yangi@test.uz",
             "admin_password": "AdminPass123!",
             "admin_full_name": "Test Admin",
         },
     )
-    assert response.status_code == 200
-    assert "company_id" in response.json()
+    assert response.status_code == 200, response.text
+    data = response.json()
+    # AuthResponse: user + tokenlar. company_id user ichida keladi.
+    assert data["user"]["company_id"] is not None
+    assert data["user"]["role"] == "admin"
+
+    # Firma superadmin tasdig'ini kutib turishi kerak.
+    from sqlalchemy import select
+
+    from app.models.company import Company, CompanyStatus
+
+    company = (await db_session.execute(
+        select(Company).where(Company.email == "company@test.uz")
+    )).scalar_one()
+    assert company.status == CompanyStatus.PENDING
+    # Tarif mijoz tanlaganidan emas, har doim eng quyi rejadan boshlanadi.
+    assert company.tariff == "boshlangich"
 
 
 @pytest.mark.asyncio

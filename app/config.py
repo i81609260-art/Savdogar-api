@@ -1,9 +1,17 @@
 """Application configuration loaded from environment variables."""
 
+import hashlib
+import hmac
 from functools import lru_cache
 from typing import List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Kodga yozilgan zaxira kalit. Production'da SECRET_KEY environment
+# o'zgaruvchisi ORQALI albatta almashtiriladi — aks holda bu kalitni bilgan
+# odam istalgan foydalanuvchi (shu jumladan superadmin) uchun yaroqli JWT
+# yasay oladi. `Settings.secret_key_is_default` shuni tekshiradi.
+DEV_SECRET_KEY = "dev-secret-key-change-in-production-min-32"
 
 
 class Settings(BaseSettings):
@@ -17,10 +25,26 @@ class Settings(BaseSettings):
 
     app_name: str = "Savdogar"
     debug: bool = False
-    secret_key: str = "dev-secret-key-change-in-production-min-32"
+    secret_key: str = DEV_SECRET_KEY
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
+
+    # Superadmin hisobi. Parol FAQAT hisob mavjud bo'lmaganda ishlatiladi —
+    # keyinchalik paneldan yoki SUPERADMIN_PASSWORD orqali o'zgartirilgan parol
+    # server qayta ishga tushganda tiklanib ketmaydi.
+    superadmin_email: str = "admin@turify.xyz"
+    superadmin_password: str = "admin123"
+    # Login formasiga qisqa "admin" yozilsa shu email'ga o'giriladi.
+    superadmin_login_alias: str = "admin"
+    # true bo'lsa har startup'da parol SUPERADMIN_PASSWORD ga majburan
+    # qaytariladi (parol unutilganda bir martalik tiklash uchun).
+    superadmin_force_reset: bool = False
+
+    @property
+    def secret_key_is_default(self) -> bool:
+        """Kalit almashtirilmaganmi — startup'da ogohlantirish uchun."""
+        return self.secret_key == DEV_SECRET_KEY
 
     database_url: str = "sqlite+aiosqlite:///./savdogar.db"
     # Railway persistent volume mount path (set to /data in Railway Variables)
@@ -110,6 +134,34 @@ class Settings(BaseSettings):
             return f"{self.data_dir}/uploads"
         return self.upload_dir
 
+    @property
+    def private_dir(self) -> str:
+        """Maxfiy fayllar (qo'ng'iroq yozuvlari) papkasi.
+
+        /uploads dan FARQLI o'laroq bu papka statik tarzda tarqatilmaydi —
+        fayllar faqat autentifikatsiyadan o'tgan endpoint orqali beriladi.
+        """
+        if self.data_dir:
+            return f"{self.data_dir}/private"
+        return "private"
+
+    def webhook_id_for(self, token: str) -> str:
+        """Telegram bot tokenidan webhook yo'li uchun taxallus hosil qiladi.
+
+        Tokenning o'zini URL'da yubormaymiz: URL server/proxy loglariga tushadi
+        va log'ni ko'rgan odam botni to'liq egallab olardi.
+        """
+        return hmac.new(
+            self.secret_key.encode(), token.encode(), hashlib.sha256
+        ).hexdigest()[:32]
+
+    @property
+    def telegram_webhook_secret(self) -> str:
+        """Telegram `secret_token` — har so'rov sarlavhasida tekshiriladi."""
+        return hmac.new(
+            self.secret_key.encode(), b"telegram-webhook", hashlib.sha256
+        ).hexdigest()[:48]
+
     vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_claims_email: str = "mailto:admin@sayr.uz"
@@ -127,15 +179,60 @@ class Settings(BaseSettings):
         "https://savdogar-agentligi.vercel.app"
     )
 
+    # Har bir firmaning o'z subdomeni bo'lgani uchun ro'yxatning o'zi yetmaydi —
+    # *.turify.xyz va Vercel preview'lari naqsh orqali ruxsat etiladi.
+    cors_origin_regex: str = (
+        r"^https://([a-z0-9-]+\.)*turify\.xyz$"
+        r"|^https://[a-z0-9-]+\.vercel\.app$"
+        r"|^http://localhost:\d+$"
+    )
+
     @property
     def cors_origin_list(self) -> List[str]:
         """Parse comma-separated CORS origins."""
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
+    # Socket.io CORS'ini kim boshqaradi.
+    #   "app"  — engineio o'z sarlavhalarini qo'shmaydi, CORS'ni ilovaning
+    #            CORSMiddleware'i hal qiladi (naqshni ham qo'llaydi, ya'ni
+    #            firma subdomenlari ham ishlaydi). Standart va tavsiya etilgan.
+    #   "list" — faqat SOCKET_CORS_ORIGINS ro'yxati (qat'iy, lekin firma
+    #            subdomenidan ochilgan admin panelni sindiradi).
+    #   "any"  — hammasiga ruxsat (eski xatti-harakat, tavsiya etilmaydi).
+    socket_cors_mode: str = "app"
+
     @property
-    def socket_cors_list(self) -> List[str]:
-        """Parse comma-separated Socket.io CORS origins."""
-        return [o.strip() for o in self.socket_cors_origins.split(",") if o.strip()]
+    def socket_cors_list(self):
+        """python-socketio ga beriladigan `cors_allowed_origins` qiymati.
+
+        Muhim: admin panel firma subdomenidan ham ochiladi
+        (masalan `firma.turify.xyz/admin`), shuning uchun qat'iy ro'yxat
+        realtime'ni sindiradi. Standart rejimda engineio CORS'ga umuman
+        aralashmaydi ([] shuni bildiradi) va ishni CORSMiddleware bajaradi —
+        u naqsh orqali barcha *.turify.xyz subdomenlarini taniydi.
+
+        Socket ulanishning asosiy himoyasi baribir CORS emas: `connect`
+        hodisasi yaroqli JWT talab qiladi, xona esa firma bo'yicha
+        tekshiriladi.
+        """
+        if self.socket_cors_mode == "any":
+            return "*"
+        if self.socket_cors_mode == "list":
+            origins = [
+                o.strip() for o in self.socket_cors_origins.split(",") if o.strip()
+            ]
+            base = self.frontend_url.rstrip("/")
+            host = base.replace("https://", "").replace("http://", "")
+            for extra in (
+                base,
+                f"https://www.{host}",
+                f"https://app.{host}",
+                f"https://superadmin.{host}",
+            ):
+                if extra not in origins:
+                    origins.append(extra)
+            return origins
+        return []
 
 
 @lru_cache

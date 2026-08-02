@@ -77,10 +77,15 @@ class SayrIntegrationService:
     ) -> dict:
         """SAYR dan kelgan webhookni qayta ishlash."""
         company_id = data.get("savdogar_company_id") or data.get("company_id")
-        secret = settings.sayr_webhook_secret
+        secret = settings.sair_webhook_secret
 
-        if secret and signature and raw_body:
-            if not self.verify_webhook_signature(raw_body, signature, secret):
+        if secret:
+            # Secret sozlangan bo'lsa imzo MAJBURIY. Ilgari imzo yuborilmasa
+            # tekshiruv butunlay o'tkazib yuborilardi — ya'ni istalgan odam
+            # imzosiz so'rov yuborib bronni "tasdiqlangan" qila olardi.
+            if not signature or not raw_body or not self.verify_webhook_signature(
+                raw_body, signature, secret
+            ):
                 raise HTTPException(status_code=401, detail="Webhook imzosi noto'g'ri")
 
         handlers = {
@@ -373,16 +378,16 @@ class SayrIntegrationService:
         else:
             config.status = IntegrationStatus.PENDING
 
-        if settings.sayr_api_url and settings.sayr_api_key:
+        if settings.sair_api_url and settings.sair_api_key:
             try:
                 async with httpx.AsyncClient(timeout=30) as client:
                     resp = await client.post(
-                        f"{settings.sayr_api_url.rstrip('/')}/api/integrations/savdogar/register",
+                        f"{settings.sair_api_url.rstrip('/')}/api/integrations/savdogar/register",
                         json={
                             "savdogar_company_id": company_id,
                             "webhook_url": f"{settings.savdogar_public_url.rstrip('/')}/api/integrations/sayr/webhook",
                         },
-                        headers={"Authorization": f"Bearer {settings.sayr_api_key}"},
+                        headers={"Authorization": f"Bearer {settings.sair_api_key}"},
                     )
                     if resp.status_code < 400:
                         body = resp.json()

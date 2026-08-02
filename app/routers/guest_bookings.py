@@ -1,10 +1,24 @@
 """Guest booking API — no authentication required.
 
-Allows public visitors (e.g. Ucharbeksam landing page) to create
-bookings without logging in. A temporary user account is created
-with role=USER if one doesn't already exist for the given phone.
+DIQQAT: hozir bu router ISHLAMAYDI. `bookings.py` da xuddi shu manzil
+(`POST /api/bookings/guest`) bor va u `main.py` da oldinroq ulanadi, shuning
+uchun barcha so'rovlar o'shanga tushadi (u lead/TourRequest yaratadi va hech
+qanday hisob ochmaydi). Bu modul kelajakda kerak bo'lsa deb qoldirilgan —
+lekin quyidagi xavfsizlik tuzatishlari baribir kiritildi, chunki ulanish
+tartibi o'zgarsa modul birdan "jonlanib" ketishi mumkin.
+
+Allows public visitors (e.g. the OpenTour landing page) to create bookings
+without logging in. A placeholder user account is created with role=USER when
+the phone number has no guest account yet.
+
+XAVFSIZLIK ESLATMASI: bu yerda yaratiladigan hisob HECH QACHON kirish uchun
+mo'ljallanmagan. Shu sababli paroli tasodifiy (hech kimga ko'rsatilmaydi) va
+`is_active=False` — ya'ni login qilib bo'lmaydi. Ilgari parol telefon
+raqamidan hisoblanardi (`Guest_<telefon>!`), ya'ni raqamni bilgan istalgan
+odam o'sha odamning hisobiga kira olardi.
 """
 
+import secrets
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -19,9 +33,14 @@ from app.models.tour import Tour
 from app.models.user import User, UserRole
 from app.schemas.booking import BookingResponse
 from app.services.notification_service import NotificationService
+from app.utils.limiter import limiter
 from app.utils.security import hash_password
 
 router = APIRouter(prefix="/api/bookings", tags=["Guest Bookings"])
+
+# Mehmon hisoblari shu domenda yaratiladi — haqiqiy foydalanuvchilardan
+# ajratib turish uchun. Faqat shu domendagi hisob qayta ishlatiladi.
+GUEST_EMAIL_DOMAIN = "guest.turify.xyz"
 
 
 class GuestBookingCreate(BaseModel):
@@ -55,9 +74,10 @@ class GuestBookingResponse(BaseModel):
     response_model=GuestBookingResponse,
     summary="Mehmon sifatida bron qilish (authsiz)",
 )
+@limiter.limit("5/minute")
 async def create_guest_booking(
-    data: GuestBookingCreate,
     request: Request,
+    data: GuestBookingCreate,
     db: AsyncSession = Depends(get_db),
 ) -> GuestBookingResponse:
     """
@@ -81,38 +101,39 @@ async def create_guest_booking(
     if tour.available_slots < data.guests_count:
         raise HTTPException(status_code=400, detail="Yetarli joy yo'q")
 
-    # 2. Find or create user by phone
+    # 2. Mehmon hisobini topish yoki yaratish.
+    #
+    # DIQQAT: telefon raqami bo'yicha MAVJUD hisobni qayta ishlatmaymiz.
+    # Ilgari shunday qilinardi va bu ikki teshik ochardi: (a) hujumchi
+    # admin telefon raqamini yozib, o'sha adminning ismini almashtira olardi,
+    # (b) bron begona odamning hisobiga yozilardi. Endi faqat o'zimiz yaratgan
+    # mehmon hisobi (guest domenidagi) qayta ishlatiladi.
     clean_phone = data.phone.strip().replace(" ", "")
-    user_result = await db.execute(
-        select(User).where(User.phone == clean_phone)
-    )
-    user = user_result.scalar_one_or_none()
+    guest_email = f"guest_{clean_phone.replace('+', '')}@{GUEST_EMAIL_DOMAIN}"
 
-    if not user:
-        # Create a guest user
-        safe_email = f"guest_{clean_phone.replace('+', '')}@ucharbeksam.uz"
-        # Check email uniqueness
-        email_check = await db.execute(select(User).where(User.email == safe_email))
-        existing_by_email = email_check.scalar_one_or_none()
-        if existing_by_email:
-            user = existing_by_email
-        else:
-            user = User(
-                email=safe_email,
-                hashed_password=hash_password(f"Guest_{clean_phone}!"),
-                full_name=data.full_name.strip(),
-                phone=clean_phone,
-                role=UserRole.USER,
-                is_active=True,
-            )
-            db.add(user)
-            await db.flush()
-    else:
-        # Update name if changed
+    user = (
+        await db.execute(select(User).where(User.email == guest_email))
+    ).scalar_one_or_none()
+
+    if user:
         if data.full_name.strip() and user.full_name != data.full_name.strip():
             user.full_name = data.full_name.strip()
             db.add(user)
             await db.flush()
+    else:
+        user = User(
+            email=guest_email,
+            # Tasodifiy va hech qayerda ko'rsatilmaydigan parol + is_active=False:
+            # bu hisob orqali tizimga kirib bo'lmaydi, u faqat bronni biror
+            # yozuvga bog'lash uchun kerak.
+            hashed_password=hash_password(secrets.token_urlsafe(32)),
+            full_name=data.full_name.strip(),
+            phone=clean_phone,
+            role=UserRole.USER,
+            is_active=False,
+        )
+        db.add(user)
+        await db.flush()
 
     # 3. Build notes
     notes_parts = []
@@ -124,7 +145,7 @@ async def create_guest_booking(
         notes_parts.append(f"Mehmonxona: {data.hotel_stars} yulduz")
     if data.bus_comfort:
         notes_parts.append(f"Transfer: {data.bus_comfort}")
-    notes_parts.append("Ucharbeksam saytidan bron qilindi")
+    notes_parts.append("Saytdan bron qilindi")
     combined_notes = " | ".join(notes_parts)
 
     # 4. Create booking

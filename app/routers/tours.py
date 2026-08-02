@@ -1,12 +1,9 @@
 """Tour packages API routes."""
 
-import os
-import uuid
 from datetime import date
 from typing import Optional
 
-import aiofiles
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -16,38 +13,11 @@ from app.middleware.role_guard import role_required
 from app.models.user import User, UserRole
 from app.schemas.tour import TourCreate, TourResponse, TourUpdate
 from app.services.tour_service import TourService
+from app.utils.images import save_image
 from app.utils.pagination import PaginatedResponse
 
 router = APIRouter(prefix="/api/tours", tags=["Tours"])
 settings = get_settings()
-
-_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
-_MAX_BYTES = settings.max_upload_size_mb * 1024 * 1024
-
-
-def _validate_image(content: bytes, filename: str) -> str:
-    """Return safe extension or raise 400."""
-    ext = os.path.splitext(filename)[1].lower()
-    if ext not in _ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Faqat rasm fayllari qabul qilinadi: {', '.join(_ALLOWED_EXTENSIONS)}",
-        )
-    if len(content) > _MAX_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Fayl hajmi {settings.max_upload_size_mb}MB dan oshmasligi kerak",
-        )
-    # Validate magic bytes to prevent disguised executables
-    magic_ok = (
-        content[:3] == b"\xff\xd8\xff"  # JPEG
-        or content[:8] == b"\x89PNG\r\n\x1a\n"  # PNG
-        or content[:6] in (b"GIF87a", b"GIF89a")  # GIF
-        or (content[:4] == b"RIFF" and content[8:12] == b"WEBP")  # WebP
-    )
-    if not magic_ok:
-        raise HTTPException(status_code=400, detail="Yaroqsiz rasm formati")
-    return ext
 
 
 @router.get("", response_model=PaginatedResponse[TourResponse], summary="Tur ro'yxati")
@@ -179,16 +149,13 @@ async def upload_tour_image(
     db: AsyncSession = Depends(get_db),
 ) -> TourResponse:
     """Upload tour cover image — validates type, size, and magic bytes."""
-    content = await file.read()
-    ext = _validate_image(content, file.filename or "unknown.jpg")
-
-    os.makedirs(settings.upload_dir, exist_ok=True)
-    filename = f"{uuid.uuid4()}{ext}"
-    filepath = os.path.join(settings.upload_dir, filename)
-
-    async with aiofiles.open(filepath, "wb") as f:
-        await f.write(content)
-
-    image_url = f"/uploads/{filename}"
+    # persistent_upload_dir — Railway volume'i. Ilgari bu yerda `upload_dir`
+    # ishlatilgani uchun rasm vaqtinchalik diskka yozilar, `/uploads` esa
+    # volume'dan tarqatilardi: deploy'dan keyin barcha rasmlar 404 bo'lardi.
+    image_url = await save_image(
+        file,
+        settings.persistent_upload_dir,
+        settings.max_upload_size_mb * 1024 * 1024,
+    )
     service = TourService(db)
     return await service.upload_image(current_user, tour_id, image_url)

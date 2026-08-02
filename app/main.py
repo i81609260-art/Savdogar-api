@@ -62,7 +62,10 @@ settings = get_settings()
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
-    cors_allowed_origins="*",
+    # "*" emas. Standart rejimda ([]) engineio CORS sarlavhalarini o'zi
+    # qo'shmaydi — buni pastdagi CORSMiddleware bajaradi, u naqsh orqali
+    # firma subdomenlarini ham taniydi. Batafsil: config.socket_cors_list.
+    cors_allowed_origins=settings.socket_cors_list,
 )
 
 socket_app = socketio.ASGIApp(sio, socketio_path="")
@@ -78,8 +81,18 @@ requests_ws.set_socket_io(sio, _sid_auth)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Create tables, patch missing columns, and seed superadmin on startup."""
+    if settings.secret_key_is_default and not settings.debug:
+        # Kalit almashtirilmagan bo'lsa istalgan odam superadmin tokeni yasay
+        # oladi. Ilovani to'xtatmaymiz (deploy sinmasin), lekin logda baland
+        # ovozda ogohlantiramiz.
+        logging.getLogger(__name__).critical(
+            "XAVFSIZLIK: SECRET_KEY hali ham standart qiymatda! "
+            "Railway -> Variables -> SECRET_KEY ga uzun tasodifiy matn qo'ying, "
+            "aks holda istalgan odam soxta JWT token yasay oladi."
+        )
     if settings.data_dir:
         os.makedirs(settings.data_dir, exist_ok=True)
+    os.makedirs(os.path.join(settings.private_dir, "calls"), exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -276,12 +289,88 @@ async def lifespan(app: FastAPI):
             logging.getLogger(__name__).debug(
                 "Migratsiya otkazib yuborildi: %s -> %s", stmt.split("\n")[0][:80], exc
             )
+    # Eski mehmon hisoblari paroli telefon raqamidan hisoblanardi
+    # (`Guest_<telefon>!`) — ya'ni raqamni bilgan odam ularga kira olardi.
+    # Ularni faolsizlantiramiz: bron yozuvlari saqlanadi, lekin login yopiladi.
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                __import__("sqlalchemy").text(
+                    "UPDATE users SET is_active = 0 "
+                    "WHERE email LIKE 'guest\\_%@ucharbeksam.uz' ESCAPE '\\' "
+                    "AND role = 'USER'"
+                )
+            )
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).debug("Eski mehmon hisoblari yangilanmadi: %s", exc)
+
+    await migrate_call_audio_to_private()
     await seed_superadmin()
     yield
 
 
+async def migrate_call_audio_to_private():
+    """Eski qo'ng'iroq yozuvlarini ochiq /uploads dan maxfiy papkaga ko'chiradi.
+
+    Ilgari yozuvlar `/uploads/calls/<uuid>.mp3` sifatida statik tarqatilardi —
+    havolani bilgan istalgan odam mijoz bilan bo'lgan suhbatni yuklab olishi
+    mumkin edi. Endi fayllar `private/calls/` da yotadi va faqat
+    `/api/calls/audio/<fayl>` orqali, o'z firmasining xodimiga beriladi.
+    """
+    import shutil
+
+    from sqlalchemy import text as sql_text
+
+    log = logging.getLogger(__name__)
+    old_dir = os.path.join(settings.persistent_upload_dir, "calls")
+    new_dir = os.path.join(settings.private_dir, "calls")
+    os.makedirs(new_dir, exist_ok=True)
+
+    moved = 0
+    if os.path.isdir(old_dir):
+        for name in os.listdir(old_dir):
+            src = os.path.join(old_dir, name)
+            if not os.path.isfile(src):
+                continue
+            dst = os.path.join(new_dir, name)
+            try:
+                if os.path.exists(dst):
+                    os.remove(src)
+                else:
+                    shutil.move(src, dst)
+                moved += 1
+            except OSError as exc:
+                log.warning("Yozuvni ko'chirib bo'lmadi %s: %s", name, exc)
+
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                sql_text(
+                    "UPDATE call_recordings "
+                    "SET file_url = REPLACE(file_url, '/uploads/calls/', "
+                    "'/api/calls/audio/') "
+                    "WHERE file_url LIKE '/uploads/calls/%'"
+                )
+            )
+    except Exception as exc:  # noqa: BLE001 — jadval hali bo'lmasligi mumkin
+        log.debug("call_recordings file_url yangilanmadi: %s", exc)
+
+    if moved:
+        log.info("%d ta qo'ng'iroq yozuvi maxfiy papkaga ko'chirildi", moved)
+
+
 async def seed_superadmin():
-    """Create default superadmin if none exists, or update existing."""
+    """Superadmin hisobi yo'q bo'lsa yaratadi. Mavjud parolga TEGMAYDI.
+
+    Ilgari bu funksiya har startup'da parolni qayta yozardi — ya'ni panelda
+    parol almashtirilsa ham, keyingi deploy'da eskisiga qaytib, kodda turgan
+    parol bilan kirish mumkin bo'lib qolardi. Endi parol faqat hisob birinchi
+    marta yaratilganda o'rnatiladi.
+
+    Parolni unutib qo'yilsa: Railway'da SUPERADMIN_PASSWORD ni yangi parolga
+    qo'yib, SUPERADMIN_FORCE_RESET=true bilan bir marta deploy qiling, so'ng
+    o'zgaruvchini qaytib false qiling.
+    """
     from sqlalchemy import select
 
     from app.database import AsyncSessionLocal
@@ -295,19 +384,20 @@ async def seed_superadmin():
         admin = result.scalar_one_or_none()
 
         if admin:
-            # Update existing superadmin. Email stays admin@turify.xyz because
-            # login aliases "admin" -> "admin@turify.xyz"; password is admin123.
-            admin.email = "admin@turify.xyz"
-            admin.hashed_password = hash_password("admin123")
-            admin.full_name = "Super Admin"
-            db.add(admin)
-            await db.commit()
+            if settings.superadmin_force_reset:
+                admin.hashed_password = hash_password(settings.superadmin_password)
+                admin.is_active = True
+                db.add(admin)
+                await db.commit()
+                logging.getLogger(__name__).warning(
+                    "SUPERADMIN_FORCE_RESET yoqilgan — parol qayta o'rnatildi. "
+                    "Endi bu o'zgaruvchini false qiling."
+                )
             return
 
-        # Create new superadmin if none exists
         admin = User(
-            email="admin@turify.xyz",
-            hashed_password=hash_password("admin123"),
+            email=settings.superadmin_email,
+            hashed_password=hash_password(settings.superadmin_password),
             full_name="Super Admin",
             role=UserRole.SUPERADMIN,
             is_active=True,
@@ -336,12 +426,33 @@ app.add_middleware(SubscriptionGuardMiddleware)
 # Foydalanuvchi faolligini (DAU/MAU) belgilaydi — o'zi fail-open.
 app.add_middleware(ActivityMiddleware)
 
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    """Brauzer himoyasini yoqadigan standart sarlavhalar."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy", "geolocation=(), microphone=(), camera=()"
+    )
+    if not settings.debug:
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+        )
+    return response
+
+
+# "*" o'rniga aniq ro'yxat + naqsh: har firmaning o'z subdomeni bo'lgani uchun
+# faqat ro'yxat yetmaydi, lekin butunlay ochiq qoldirish ham xavfli edi.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origin_list,
+    allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
 
 upload_path = settings.persistent_upload_dir
@@ -450,9 +561,18 @@ async def join_room(sid, data):
         if room != f"user_{user_info['user_id']}":
             return
     elif room.startswith("company_"):
-        # Only staff roles can join company rooms
+        # Xodim rollari — lekin FAQAT o'z firmasining xonasi. Ilgari rol
+        # tekshirilib, firma tekshirilmagani uchun istalgan firma admini
+        # raqobatchining bron/lead yangilanishlarini tinglay olardi.
         if user_info["role"] not in ("admin", "superadmin", "operator"):
             return
+        if user_info["role"] != "superadmin":
+            own = user_info.get("company_id")
+            if own is None or room != f"company_{own}":
+                return
+    else:
+        # Noma'lum prefiksli xonalar taqiqlanadi.
+        return
 
     await sio.enter_room(sid, room)
 

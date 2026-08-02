@@ -17,12 +17,11 @@ class RegisterRequest(BaseModel):
     company_logo_url: Optional[str] = None
     sair_integrated: Optional[bool] = False
     site_enabled: Optional[bool] = True
-    tariff: Optional[str] = "boshlangich"
     admin_email: EmailStr
     admin_password: str = Field(..., min_length=8)
     admin_full_name: str = Field(..., min_length=2)
     admin_phone: Optional[str] = None
-    model_config = {"extra": "allow"}
+    model_config = {"extra": "ignore"}
 
 
 class UserRegisterRequest(BaseModel):
@@ -31,14 +30,14 @@ class UserRegisterRequest(BaseModel):
     password: str = Field(..., min_length=8)
     full_name: str = Field(..., min_length=2)
     phone: Optional[str] = None
-    model_config = {"extra": "allow"}
+    model_config = {"extra": "ignore"}
 
 
 class LoginRequest(BaseModel):
     """Login credentials."""
     email: str
     password: str
-    model_config = {"extra": "allow"}
+    model_config = {"extra": "ignore"}
 
 
 class TokenResponse(BaseModel):
@@ -46,13 +45,13 @@ class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
-    model_config = {"extra": "allow"}
+    model_config = {"extra": "ignore"}
 
 
 class RefreshRequest(BaseModel):
     """Refresh token payload."""
     refresh_token: str
-    model_config = {"extra": "allow"}
+    model_config = {"extra": "ignore"}
 
 
 class UserResponse(BaseModel):
@@ -90,13 +89,13 @@ class AuthResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
-    model_config = {"extra": "allow"}
+    model_config = {"extra": "ignore"}
 
 
 class PushSubscriptionRequest(BaseModel):
     """Browser push subscription JSON."""
     subscription: str
-    model_config = {"extra": "allow"}
+    model_config = {"extra": "ignore"}
 
 
 class PaymentSettingsUpdate(BaseModel):
@@ -105,4 +104,4 @@ class PaymentSettingsUpdate(BaseModel):
     click_merchant_key: Optional[str] = None
     payme_merchant_id: Optional[str] = None
     payme_api_key: Optional[str] = None
-    model_config = {"extra": "allow"}
+    model_config = {"extra": "ignore"}

@@ -6,8 +6,10 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.models.company import Company, CompanyStatus
 from app.models.user import RefreshTokenBlacklist, User, UserRole
+from app.services.tariff import DEFAULT_TARIFF
 from app.utils.slug import unique_slug
 from app.schemas.auth import (
     AuthResponse,
@@ -24,6 +26,22 @@ from app.utils.security import (
     hash_password,
     verify_password,
 )
+
+
+def _token_claims(user: User) -> dict:
+    """JWT ichiga yoziladigan maydonlar.
+
+    `company_id` shart: Socket.io xonalari va realtime tekshiruvlari shu
+    maydonga tayanadi. Ilgari u tokenga qo'shilmagani uchun firma tekshiruvi
+    doim None bilan solishtirilardi — natijada `request_join_room` umuman
+    ishlamas, `company_*` xonalari esa hech kimga biriktirilmasdi.
+    """
+    return {
+        "sub": str(user.id),
+        "role": user.role.value,
+        "company_id": user.company_id,
+        "branch_id": user.branch_id,
+    }
 
 
 class AuthService:
@@ -54,7 +72,11 @@ class AuthService:
             logo_url=data.company_logo_url,
             sair_integrated=bool(data.sair_integrated),
             site_enabled=bool(data.site_enabled) if data.site_enabled is not None else True,
-            tariff=getattr(data, "tariff", None) or "boshlangich",
+            # Tarif HAR DOIM eng quyi rejadan boshlanadi. Ilgari bu qiymat
+            # so'rov tanasidan olinardi — ya'ni ro'yxatdan o'tayotgan odam
+            # "cheksiz" (sotilmaydigan, to'lovdan ozod) rejani o'ziga yozib,
+            # umrbod tekin cheksiz obuna olishi mumkin edi.
+            tariff=DEFAULT_TARIFF,
             status=CompanyStatus.PENDING,
         )
         self.db.add(company)
@@ -75,7 +97,7 @@ class AuthService:
         await self.db.flush()
         await self.db.refresh(admin)
 
-        token_data = {"sub": str(admin.id), "role": admin.role.value}
+        token_data = _token_claims(admin)
         access = create_access_token(token_data)
         refresh, _, _ = create_refresh_token(token_data)
         return AuthResponse(
@@ -108,9 +130,10 @@ class AuthService:
     async def login(self, data: LoginRequest) -> AuthResponse:
         """Authenticate user and return JWT tokens."""
         from sqlalchemy.orm import selectinload
-        login_email = data.email
-        if login_email == "admin":
-            login_email = "admin@turify.xyz"
+        settings = get_settings()
+        login_email = (data.email or "").strip()
+        if login_email.lower() == settings.superadmin_login_alias.lower():
+            login_email = settings.superadmin_email
 
         result = await self.db.execute(
             select(User)
@@ -131,7 +154,7 @@ class AuthService:
                 detail="Akkaunt faol emas yoki tasdiqlanmagan",
             )
 
-        token_data = {"sub": str(user.id), "role": user.role.value}
+        token_data = _token_claims(user)
         access = create_access_token(token_data)
         refresh, _, _ = create_refresh_token(token_data)
 
@@ -182,7 +205,7 @@ class AuthService:
             expires = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
             self.db.add(RefreshTokenBlacklist(token_jti=jti, expires_at=expires))
 
-        token_data = {"sub": str(user.id), "role": user.role.value}
+        token_data = _token_claims(user)
         access = create_access_token(token_data)
         new_refresh, _, _ = create_refresh_token(token_data)
 

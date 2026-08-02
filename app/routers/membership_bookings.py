@@ -1,4 +1,4 @@
-"""Ucharbeksam — membership (tarif) bron qilish API."""
+"""OpenTour — membership (tarif) bron qilish API."""
 
 from datetime import datetime
 from typing import Optional
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/membership", tags=["Membership"])
 # ── Model ──────────────────────────────────────────────────────────────────────
 
 class MembershipBooking(Base):
-    """Ucharbeksam membership bron."""
+    """OpenTour membership bron."""
 
     __tablename__ = "membership_bookings"
 
@@ -75,7 +75,7 @@ async def create_membership_booking(
     data: MembershipBookingCreate,
     db: AsyncSession = Depends(get_db),
 ) -> MembershipBookingResponse:
-    """Ucharbeksam saytidan membership sotib olish so'rovi."""
+    """OpenTour saytidan membership sotib olish so'rovi."""
     plan_key = data.plan.lower()
     if plan_key not in PLANS:
         raise HTTPException(status_code=400, detail=f"Noto'g'ri tarif: {data.plan}")
