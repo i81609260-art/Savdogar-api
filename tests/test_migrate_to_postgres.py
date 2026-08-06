@@ -127,7 +127,19 @@ def test_coerce_none_always_none():
     ],
 )
 def test_pg_dsn_normalises(monkeypatch, given):
+    monkeypatch.delenv("TARGET_DATABASE_URL", raising=False)
     monkeypatch.setenv("DATABASE_URL", given)
+    assert _pg_dsn() == "postgresql://u:p@host:5432/db"
+
+
+def test_target_url_wins_over_database_url(monkeypatch):
+    """Ko'chirish paytida ilova hali SQLite'da ishlashi kerak.
+
+    `DATABASE_URL` ni Postgres'ga o'zgartirsak Railway qayta deploy qiladi
+    va ilova bo'sh bazada yangi superadmin yaratadi.
+    """
+    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./savdogar.db")
+    monkeypatch.setenv("TARGET_DATABASE_URL", "postgresql://u:p@host:5432/db")
     assert _pg_dsn() == "postgresql://u:p@host:5432/db"
 
 

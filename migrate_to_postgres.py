@@ -76,10 +76,26 @@ def _resolve_sqlite_path() -> str:
 
 
 def _pg_dsn() -> str:
-    """DATABASE_URL ni asyncpg tushunadigan ko'rinishga keltiradi."""
-    url = os.getenv("DATABASE_URL", "")
+    """Maqsad Postgres manzilini asyncpg tushunadigan ko'rinishga keltiradi.
+
+    Avval `TARGET_DATABASE_URL` qaraladi, keyin `DATABASE_URL`.
+
+    Nega alohida o'zgaruvchi: ko'chirish PAYTIDA ilova hali SQLite'da
+    ishlashi kerak. Agar to'g'ridan-to'g'ri `DATABASE_URL` ni Postgres'ga
+    o'zgartirsak, Railway darhol qayta deploy qiladi va ilova BO'SH bazada
+    ishga tushib, standart parolli yangi superadmin yaratadi — haqiqiy
+    hisob ustidan tushib qoladi.
+
+    To'g'ri tartib:
+        1. TARGET_DATABASE_URL = Postgres      (ilova sezmaydi)
+        2. ko'chirish
+        3. DATABASE_URL = Postgres             (endi deploy xavfsiz)
+    """
+    url = os.getenv("TARGET_DATABASE_URL") or os.getenv("DATABASE_URL", "")
     if not url:
-        sys.exit("XATO: DATABASE_URL o'rnatilmagan.")
+        sys.exit(
+            "XATO: TARGET_DATABASE_URL (yoki DATABASE_URL) o'rnatilmagan."
+        )
     # Railway ba'zan `postgres://` beradi; SQLAlchemy uchun `+asyncpg` qo'shilgan
     # bo'lishi ham mumkin — asyncpg ikkalasini ham tushunmaydi.
     url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
