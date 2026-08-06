@@ -51,8 +51,13 @@ class Company(Base):
     company_type: Mapped[CompanyType] = mapped_column(
         Enum(CompanyType), default=CompanyType.MULTI, nullable=True
     )
+    # `use_alter=True` — bu FK `companies -> users -> companies` siklini
+    # yopadi. Belgilanmasa SQLAlchemy jadvallarni tartiblay olmaydi va
+    # `create_all` / `drop_all` tasodifiy tartibda ishlaydi (testlarda
+    # "no such table" xatolari aynan shundan chiqardi).
     owner_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("users.id"), nullable=True
+        ForeignKey("users.id", use_alter=True, name="fk_companies_owner"),
+        nullable=True,
     )
     company_info: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     website_customization: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

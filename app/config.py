@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
 
+    # Turagentlarning tur operator kabinetidagi login/parol/sessiyasini
+    # shifrlash kaliti. Bo'sh bo'lsa SECRET_KEY dan hosil qilinadi — ishlaydi,
+    # lekin SECRET_KEY almashtirilsa saqlangan parollar o'qilmay qoladi.
+    # Yaratish:
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    credentials_key: str = ""
+
     # Superadmin hisobi. Parol FAQAT hisob mavjud bo'lmaganda ishlatiladi —
     # keyinchalik paneldan yoki SUPERADMIN_PASSWORD orqali o'zgartirilgan parol
     # server qayta ishga tushganda tiklanib ketmaydi.

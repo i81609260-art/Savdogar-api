@@ -34,7 +34,16 @@ from app.schemas.crm import CustomerCreateRequest
 from app.schemas.tour import TourCreate, TourUpdate
 from app.services.crm_service import CRMService
 from app.services.reports_service import ReportsService
+from app.services.offer_service import group_by_hotel, search_by_query
 from app.services.tariff import DEFAULT_TARIFF, get_tariff, within_tour_limit
+from app.services.tella_tour_search import (
+    SEARCH_INTENT,
+    SEARCH_KEYWORDS,
+    SEARCH_TRAINING,
+    extract_query,
+    next_question,
+    summarize,
+)
 from app.services.tour_service import TourService
 
 logger = logging.getLogger(__name__)
@@ -131,6 +140,10 @@ INTENT_TRAINING: list[tuple[str, str]] = [
     ("kripto valyuta narxi", "unknown"), ("dollar kursi qancha", "unknown"),
 ]
 
+# Tur operatorlardan qidirish — misollar alohida modulda, taksonomiya bilan
+# birga turadi. Shu bilan ma'lumotnoma va o'quv misollari bir joyda saqlanadi.
+INTENT_TRAINING += SEARCH_TRAINING
+
 _CONF_THRESHOLD = 0.18  # past ishonchda -> unknown
 
 # Kritik intentlar uchun kalit soʻz tayanchi (kichik dataset ishonchsizligiga qarshi).
@@ -138,6 +151,10 @@ _CONF_THRESHOLD = 0.18  # past ishonchda -> unknown
 # (koʻp soʻzli) iboralar umumiylaridan OLDIN turishi shart. Masalan
 # "mijoz qosh" — "qosh" dan oldin boʻlmasa, tur qoshishga ketib qoladi.
 _KEYWORDS: list[tuple[str, str]] = [
+    # --- Operatorlardan tur qidirish ---
+    # "qosh" dan OLDIN turishi shart: "arzon tur topib qosh" kabi ibora
+    # aks holda tur yaratishga ketib qolardi.
+    *((kw, SEARCH_INTENT) for kw in SEARCH_KEYWORDS),
     # --- Instagram (oʻziga xos soʻz, hech narsa bilan chalkashmaydi) ---
     ("instagram", "instagram_leads"), ("insta", "instagram_leads"),
     # --- Mijoz amallari (eng aniq) ---
@@ -887,6 +904,88 @@ _OFFTOPIC = (
 )
 
 
+# Yumshatilgan shartlarni agentga tushunarli aytish uchun.
+_RELAXED_LABELS = {
+    "nights": "kecha soni",
+    "board": "ovqatlanish",
+    "star": "yulduz",
+    "price": "narx chegarasi",
+    "city": "kurort",
+}
+
+
+async def _start_tour_search(db: AsyncSession, cid: int, message: str) -> dict:
+    """So'rovni tahlil qiladi va yig'ilgan narxlar ichidan javob topadi.
+
+    Manba — price-list'lardan yig'ilgan `tour_offers`. Jonli operator
+    qidiruvi (RPA) qo'shilganda natijalar AYNAN shu jadvalga tushadi, ya'ni
+    bu funksiya o'zgarmaydi.
+    """
+    query = extract_query(message)
+
+    question = next_question(query)
+    if question:
+        return _reply(
+            f"Qidiruv uchun yana bir narsa kerak.\n{question}",
+            pending={"intent": SEARCH_INTENT, "stage": "collect",
+                     "query": query.to_dict()},
+        )
+
+    offers, dropped = await search_by_query(db, company_id=cid, query=query)
+    if not offers:
+        return _reply(
+            f"«{summarize(query)}» bo'yicha narx topilmadi.\n\n"
+            "Operatordan kelgan price-list'ni yuklang: panel → <b>Narxlar</b>, "
+            "yoki price-list'ni firma botiga forward qiling."
+        )
+
+    lines = [f"🔎 {summarize(query)}"]
+
+    # Yumshatilgan shartni JIM qoldirish mumkin emas — agent natijani
+    # so'raganiga to'liq mos deb o'ylab qolardi.
+    if dropped:
+        relaxed = ", ".join(_RELAXED_LABELS.get(d, d) for d in sorted(dropped))
+        lines.append(f"⚠️ Aynan mos topilmadi — {relaxed} sharti olib tashlandi.")
+    lines.append("")
+
+    groups = group_by_hotel(offers)
+    for group in groups[:5]:
+        best = group[0]
+        star = f"{best.star}*" if best.star else ""
+        head = " ".join(p for p in (best.hotel_name, star, best.board) if p)
+        lines.append(f"🏨 <b>{head}</b>")
+
+        for offer in group[:3]:
+            # Minglik ajratgichni almashtirish HAR DOIM faqat raqamga
+            # qo'llanadi — butun satrga qo'llansa matndagi vergullar ham
+            # yo'qoladi.
+            price = f"{offer.price_gross:,.0f}".replace(",", " ")
+            source = offer.operator_name or "price-list"
+            margin = ""
+            if offer.agent_margin:
+                margin = f" · foyda {offer.agent_margin:,.0f}".replace(",", " ")
+            lines.append(f"   {price} {offer.currency} — {source}{margin}")
+
+        # Bir mehmonxona bir necha operatorda bo'lsa — tejash ko'rsatiladi.
+        if len(group) > 1 and group[0].price_gross and group[-1].price_gross:
+            diff = group[-1].price_gross - group[0].price_gross
+            if diff > 0:
+                # `replace` FAQAT raqamga — butun satrga qo'llansa
+                # "bor, farq" dagi vergul ham yo'qolardi.
+                pretty = f"{diff:,.0f}".replace(",", " ")
+                lines.append(
+                    f"   💡 {len(group)} operatorda bor, "
+                    f"farq {pretty} {group[0].currency}"
+                )
+        lines.append("")
+
+    if len(groups) > 5:
+        lines.append(f"… va yana {len(groups) - 5} ta variant")
+    lines.append("To'liq ro'yxat: panel → <b>Narxlar</b>")
+
+    return _reply("\n".join(lines), actions=["open_prices"])
+
+
 async def _handle_no_pending(db: AsyncSession, cid: int, message: str) -> dict:
     intent, conf = _store().predict(message)
 
@@ -910,6 +1009,13 @@ async def _handle_no_pending(db: AsyncSession, cid: int, message: str) -> dict:
         if conf >= _LEARN_CONF:
             await _store().learn(db, cid, message, intent)
         return _reply(reply)
+
+    # Operatorlardan qidirish — shartlarni matndan ajratib, tasdiqqa qo'yamiz.
+    # Qidiruvning o'zi konnektor qatlamida, fon jarayonida ketadi.
+    if intent == SEARCH_INTENT:
+        if conf >= _LEARN_CONF:
+            await _store().learn(db, cid, message, intent)
+        return await _start_tour_search(db, cid, message)
 
     # Yozuvchi intentlar — asl buyruqni saqlaymiz, tasdiqlangach oʻrganamiz.
     if intent == "create_tour":
@@ -994,6 +1100,15 @@ async def _handle_pending(db: AsyncSession, user: User, message: str, pending: d
     if intent == "create_tour" and stage == "collect" and awaiting == "start_date" and is_deny(message):
         slots["start_date"] = _NO_DATE
         return _advance_create(slots)
+
+    # Qidiruv shartlarini to'ldirish. Yangi xabar avvalgi so'rov ustiga
+    # qo'shiladi — agent "Antalya" deb javob bersa oldingi shartlar
+    # (kecha, kishi, byudjet) saqlanib qoladi.
+    if intent == SEARCH_INTENT and not is_deny(message):
+        previous = pending.get("query") or {}
+        return await _start_tour_search(
+            db, cid, f"{previous.get('raw_text', '')} {message}".strip()
+        )
 
     if is_deny(message):
         return _reply("Bekor qilindi.")

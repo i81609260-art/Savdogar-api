@@ -18,6 +18,18 @@ from app.models.notification import Notification
 from app.models.site_visit import SiteVisit
 from app.models.tour import Tour
 from app.models.tour_group import TourGroup
+from app.models.tour_offer import (
+    OfferSource,
+    OperatorSearch,
+    SearchStatus,
+    TourOffer,
+)
+from app.models.tour_operator import (
+    AccountStatus,
+    OperatorAccount,
+    OperatorEngine,
+    TourOperator,
+)
 from app.models.user import RefreshTokenBlacklist, User, UserRole
 
 __all__ = [
@@ -41,6 +53,15 @@ __all__ = [
     "SiteVisit",
     "Tour",
     "TourGroup",
+    # Tur operator integratsiyasi
+    "TourOperator",
+    "OperatorAccount",
+    "OperatorEngine",
+    "AccountStatus",
+    "OperatorSearch",
+    "TourOffer",
+    "OfferSource",
+    "SearchStatus",
     "RefreshTokenBlacklist",
     "User",
     "UserRole",

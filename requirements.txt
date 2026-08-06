@@ -21,6 +21,10 @@ pywebpush==2.0.1
 cryptography==44.0.0
 fpdf2==2.8.3
 openpyxl==3.1.5
+# Operator price-list'lari PDF ko'rinishida ham keladi — matn ajratib olish
+# uchun. Import kechiktirilgan: o'rnatilmasa ilova ishlashda davom etadi,
+# faqat PDF tahlili o'chadi.
+pypdf==5.1.0
 scikit-learn==1.6.1
 numpy==2.2.3
 slowapi==0.1.9

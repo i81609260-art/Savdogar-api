@@ -1,6 +1,7 @@
 """Per-company Telegram bot endpoints: connect, disconnect, status, webhook."""
 
 import hmac
+import logging
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Body
@@ -15,6 +16,7 @@ from app.models.company_telegram_bot import CompanyTelegramBot
 from app.models.user import User, UserRole
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 admin_router = APIRouter(prefix="/api/admin/telegram", tags=["Company Telegram Bot"])
 webhook_router = APIRouter(prefix="/api/telegram", tags=["Telegram Webhooks"])
@@ -200,10 +202,26 @@ MAIN_KEYBOARD = {
     "keyboard": [
         [{"text": "🗺 Turlar"}],
         [{"text": "📞 Bog'lanish"}, {"text": "🌐 Sayt"}],
+        # Telegram ID ni topish sozlashdagi eng ko'p uchraydigan to'siq —
+        # ilova uni ko'rsatmaydi va odam uchinchi tomon botlarini qidiradi.
+        # Tugma qilib qo'ysak buyruqni eslab qolish ham shart emas.
+        [{"text": "🆔 ID"}],
     ],
     "resize_keyboard": True,
     "one_time_keyboard": False,
 }
+
+
+async def _try_extra_command(db, company_id, company, msg, site_url):
+    """Qo'shimcha buyruqlar. Xatosi botni to'xtatmasin — mijoz bron
+    qilishda davom etishi kerak."""
+    from app.services.telegram_commands import try_handle_command
+
+    try:
+        return await try_handle_command(db, company_id, company, msg, site_url)
+    except Exception:  # noqa: BLE001
+        logger.exception("Buyruq bajarilmadi: firma=%s", company_id)
+        return None
 
 
 async def _send(token: str, chat_id, text: str, reply_markup=None) -> None:
@@ -274,6 +292,22 @@ async def _handle_company_update(token: str, company_id: int, update: dict, db: 
     chat_id = msg["chat"]["id"]
     text = (msg.get("text") or "").strip()
     contact = msg.get("contact")
+
+    # Price-list — mijoz oqimidan OLDIN tekshiriladi, chunki xodim yuborgan
+    # Excel/PDF yoki uzun narx matni bron suhbatiga tushib ketmasligi kerak.
+    # `try_handle_pricelist` xodimlikni o'zi tekshiradi: mijoz yozgan bo'lsa
+    # `None` qaytaradi va quyidagi odatdagi oqim davom etadi.
+    from app.services.telegram_pricelist import try_handle_pricelist
+
+    try:
+        reply = await try_handle_pricelist(db, token, company_id, msg)
+    except Exception:  # noqa: BLE001 — price-list xatosi botni to'xtatmasin
+        logger.exception("Price-list qayta ishlanmadi: firma=%s", company_id)
+        reply = None
+    if reply:
+        await db.commit()
+        await _send(token, chat_id, reply)
+        return
 
     # Load company
     result = await db.execute(select(Company).where(Company.id == company_id))
@@ -445,6 +479,14 @@ async def _handle_company_update(token: str, company_id: int, update: dict, db: 
         else:
             await _send(token, chat_id, welcome, reply_markup=MAIN_KEYBOARD)
 
+    # Qo'shimcha buyruqlar: /id, /hisobot, /malumot. Har birining o'z ruxsat
+    # darajasi bor — hisobot faqat xodimga (ichida daromad ma'lumoti).
+    elif (
+        extra := await _try_extra_command(db, company_id, company, msg, site_url)
+    ) is not None:
+        await db.commit()
+        await _send(token, chat_id, extra, reply_markup=MAIN_KEYBOARD)
+
     elif text in ("🗺 Turlar", "/turlar"):
         res = await db.execute(
             select(Tour).where(
@@ -483,15 +525,17 @@ async def _handle_company_update(token: str, company_id: int, update: dict, db: 
         )
 
     elif text in ("🌐 Sayt", "/sayt"):
-        site_markup = {
-            "inline_keyboard": [
-                [{"text": "🌐 Saytga o'tish", "url": site_url}]
-            ]
-        }
+        # Ilgari faqat havola yuborilardi. Havola bosish — brauzer ochish,
+        # kutish; ko'p foydalanuvchi buni qilmaydi. Endi asosiy ma'lumot
+        # Telegram'ning o'zida, havola esa tugma sifatida qoladi.
+        from app.services.telegram_commands import build_site_reply
+
         await _send(
             token, chat_id,
-            f"🌐 <b>Bizning sayt:</b>\n{site_url}",
-            reply_markup=site_markup,
+            await build_site_reply(db, company, site_url),
+            reply_markup={
+                "inline_keyboard": [[{"text": "🌐 Saytga o'tish", "url": site_url}]]
+            },
         )
 
     else:

@@ -40,8 +40,11 @@ class User(Base):
         ForeignKey("companies.id"), nullable=True
     )
     # Which branch (filial) this staff member belongs to; null = all branches.
+    # `use_alter=True` — `users -> branches -> users` siklini yopadi
+    # (`branches.created_by` teskari tomonga ishora qiladi).
     branch_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("branches.id"), nullable=True
+        ForeignKey("branches.id", use_alter=True, name="fk_users_branch"),
+        nullable=True,
     )
     push_subscription: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     telegram_chat_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)

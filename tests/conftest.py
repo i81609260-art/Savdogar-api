@@ -11,6 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.config import get_settings
 from app.database import Base, get_db
 from app.main import app
+from app.utils.limiter import limiter
+
+# Testlarda tezlik chegarasi o'chirilgan. `/api/auth/login` daqiqasiga 10 ta
+# so'rovga ruxsat beradi — testlar soni oshgani sari ular mahsulot xatosi
+# tufayli emas, chegara tufayli yiqila boshlaydi va natija testlar tartibiga
+# bog'liq bo'lib qoladi. Chegaraning o'zi production sozlamasi bo'lib
+# qolaveradi.
+limiter.enabled = False
 from app.models.company import Company, CompanyStatus
 from app.models.user import User, UserRole
 from app.utils.security import hash_password
