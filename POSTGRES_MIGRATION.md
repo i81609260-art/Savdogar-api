@@ -25,6 +25,65 @@ Postgres bunga mo'ljallangan.
 
 ---
 
+---
+
+## Supabase ishlatsangiz
+
+Supabase — oddiy PostgreSQL. **Hech qanday Supabase kutubxonasi kerak emas.**
+
+| Supabase hujjati taklif qiladi | Bu loyihada |
+|---|---|
+| `@supabase/supabase-js`, `@supabase/ssr` | ❌ Kerak emas — auth JWT bilan ishlaydi |
+| `@supabase/server` | ❌ Node paketi, backend Python |
+| Prisma | ❌ SQLAlchemy ishlatiladi |
+| **Ulanish satri** | ✅ **Faqat shu** |
+
+Supabase auth'ini qo'shish **zararli**: ikkita auth tizimi paydo bo'ladi
+(Supabase sessiyasi + loyihaning JWT'si) va qaysi biri haqiqiy ekani
+noaniq bo'lib qoladi. Storage va Realtime ham shunday — `/uploads` va
+Socket.IO allaqachon bor.
+
+### Qaysi portni tanlash
+
+Supabase uch xil ulanish beradi:
+
+| Variant | Port | Holat |
+|---|---|---|
+| Direct — `db.<ref>.supabase.co` | 5432 | ⚠️ Faqat IPv6, Railway'da ishlamaydi |
+| Session pooler — `pooler.supabase.com` | 5432 | Migratsiya skripti uchun |
+| **Transaction pooler** | **6543** | ✅ **Ilova uchun** |
+
+```
+DATABASE_URL=postgresql://postgres.PROJECT_REF:PAROL@aws-0-REGION.pooler.supabase.com:6543/postgres
+```
+
+### Nima uchun 6543 alohida ishlov talab qiladi
+
+Transaction pooler (pgbouncer) ulanishni har so'rovdan keyin boshqa
+mijozga berishi mumkin. asyncpg esa *prepared statement* larni ulanishga
+bog'lab keshlaydi — keyingi so'rovda ular topilmaydi:
+
+```
+asyncpg.exceptions.DuplicatePreparedStatementError
+asyncpg.exceptions.InvalidSQLStatementNameError
+```
+
+Bu xato **tasodifiy ko'rinadi va faqat yuk oshganda boshlanadi**.
+`app/database.py` URL'da `:6543` yoki `pgbouncer=true` ni ko'rsa keshni
+o'zi o'chiradi — qo'lda hech narsa qilish shart emas.
+
+### Region
+
+Supabase loyihasini **foydalanuvchilaringizga va serveringizga yaqin**
+regionda oching. Har SQL so'rovi tarmoq bo'ylab boradi: Sidney'dagi baza
+bilan bitta sahifa 10-20 ta so'rov qilsa, sekundlar yo'qoladi.
+O'zbekiston uchun eng yaqini — Frankfurt (`eu-central-1`).
+
+Region keyinchalik o'zgartirilmaydi — yangi loyiha ochib, ma'lumotni
+qayta ko'chirish kerak bo'ladi.
+
+---
+
 ## Qadamlar
 
 ### 1. Railway'da Postgres qo'shish
