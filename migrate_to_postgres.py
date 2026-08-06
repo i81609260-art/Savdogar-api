@@ -317,22 +317,27 @@ async def main() -> int:
     print(f"  Manba  : {sqlite_path}  ({size_kb:.0f} KB)")
     print(f"  Maqsad : {dsn.split('@')[-1]}")
     if args.dry_run:
-        print("  Rejim  : DRY-RUN (hech nima yozilmaydi)")
+        print("  Rejim  : DRY-RUN (sxema yaratiladi, MA'LUMOT yozilmaydi)")
     print()
 
     # 1) Sxema — ilova ishlatadigan AYNAN o'sha kod.
-    if not args.dry_run:
-        print("[1/5] Postgres sxemasi tayyorlanmoqda...")
-        engine = create_async_engine(
-            dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
-        )
-        try:
-            await ensure_schema(engine)
-        finally:
-            await engine.dispose()
-        print("      sxema tayyor.")
-    else:
-        print("[1/5] Sxema yaratish o'tkazib yuborildi (dry-run).")
+    #
+    # DRY-RUN'da ham bajariladi. Sabab: oldindan ko'rish maqsad jadvallarini
+    # manba bilan solishtirishga tayanadi. Sxema yaratilmasa taqqoslash uchun
+    # hech narsa bo'lmaydi va "0 ta jadval ko'chiriladi" degan foydasiz
+    # natija chiqadi — ya'ni dry-run o'z vazifasini bajarmaydi.
+    #
+    # `CREATE TABLE IF NOT EXISTS` hech qanday MA'LUMOT yozmaydi va
+    # idempotent, shuning uchun bu xavfsiz.
+    print("[1/5] Postgres sxemasi tayyorlanmoqda...")
+    engine = create_async_engine(
+        dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
+    )
+    try:
+        await ensure_schema(engine)
+    finally:
+        await engine.dispose()
+    print("      sxema tayyor" + (" (ma'lumot yozilmaydi)." if args.dry_run else "."))
 
     # 2) Manba va maqsadni solishtirish. SQLite FAQAT O'QISH uchun ochiladi.
     sq = sqlite3.connect(f"file:{sqlite_path}?mode=ro", uri=True)
@@ -441,7 +446,8 @@ async def main() -> int:
 
     print()
     if args.dry_run:
-        print("DRY-RUN tugadi — hech nima o'zgartirilmadi.")
+        print("DRY-RUN tugadi — bo'sh jadvallar yaratildi, ma'lumot ko'chmadi.")
+        print("Yuqoridagi SQLITE ustuni — haqiqiy yurgizishda nima ko'chishi.")
     elif exit_code:
         print("TUGADI, LEKIN AYRIM JADVALLARDA QATOR KAM. Yuqoridagi 'KAM!' larni")
         print("tekshiring. SQLite fayli o'zgarmagan — xohlasangiz qayta urinasiz.")
