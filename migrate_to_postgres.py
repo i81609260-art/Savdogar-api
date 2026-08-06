@@ -350,8 +350,37 @@ async def main() -> int:
         shared = (set(src) & set(dst)) - SKIP_TABLES
         only_src = set(src) - set(dst) - SKIP_TABLES
         if only_src:
-            print(f"      DIQQAT: Postgres'da yo'q jadvallar: {sorted(only_src)}")
-            print("      (bular ko'chmaydi — modelga qo'shilmagan bo'lsa normal)")
+            # Bo'sh jadval yo'qligi muammo emas. Lekin MA'LUMOTI BOR jadval
+            # maqsadda bo'lmasa — bu yo'qolgan ma'lumot, ogohlantirish emas.
+            #
+            # Aynan shunday bo'lgan edi: `membership_bookings` xom SQL bilan
+            # `AUTOINCREMENT` (SQLite sintaksisi) orqali yaratilardi, Postgres
+            # uni rad etardi, xato yutilardi — va skript "TAYYOR" deb chiqardi.
+            with_data, empty = [], []
+            for name in sorted(only_src):
+                try:
+                    n = sq.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0]
+                except Exception:  # noqa: BLE001
+                    n = 0
+                (with_data if n else empty).append((name, n))
+
+            if empty:
+                print(
+                    "      Postgres'da yo'q, lekin bo'sh (muammo emas): "
+                    f"{[n for n, _ in empty]}"
+                )
+            if with_data:
+                print()
+                print("  !!! MA'LUMOTI BOR JADVALLAR POSTGRES'DA YO'Q:")
+                for name, n in with_data:
+                    print(f"        {name}: {n} qator KO'CHMAYDI")
+                print()
+                print("  Sabab odatda: jadval faqat xom SQL bilan yaratilgan va")
+                print("  unda SQLite'ga xos sintaksis bor (masalan AUTOINCREMENT).")
+                print("  Yechim: shu jadval uchun SQLAlchemy modeli qo'shing.")
+                print()
+                print("  KO'CHIRISH TO'XTATILDI — ma'lumot yo'qotmaslik uchun.")
+                return 3
 
         tables = _order_tables(shared)
         print(f"      {len(tables)} ta jadval ko'chiriladi.")

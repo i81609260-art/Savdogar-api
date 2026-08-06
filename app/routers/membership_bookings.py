@@ -5,33 +5,17 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import Column, DateTime, Integer, String, Text, func
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import Base, get_db
+from app.database import get_db
+# Model `app/models/` da turadi. Ilgari u SHU FAYLDA ta'riflangan edi va
+# shuning uchun faqat router import qilinganda ro'yxatga tushardi —
+# migratsiya skripti routerlarni import qilmagani uchun jadvalni
+# Postgres'da YARATMASDI va ma'lumot jimgina tushib qolardi.
+from app.models.membership_booking import MembershipBooking
 
 router = APIRouter(prefix="/api/membership", tags=["Membership"])
-
-
-# ── Model ──────────────────────────────────────────────────────────────────────
-
-class MembershipBooking(Base):
-    """OpenTour membership bron."""
-
-    __tablename__ = "membership_bookings"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    plan = Column(String(50), nullable=False)          # standard / gold / platinum
-    price = Column(String(20), nullable=False)          # "150$" / "450$" / "1500$"
-    full_name = Column(String(255), nullable=False)
-    phone = Column(String(50), nullable=False)
-    email = Column(String(255), nullable=True)
-    people_count = Column(String(20), nullable=True)    # "4 ta" / "8 ta" / "Cheksiz"
-    duration = Column(String(30), nullable=True)        # "4 oy" / "8 oy" / "1.5 yil"
-    message = Column(Text, nullable=True)
-    status = Column(String(20), nullable=False, default="new")  # new / contacted / confirmed
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
