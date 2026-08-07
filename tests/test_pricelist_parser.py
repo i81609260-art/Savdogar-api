@@ -15,6 +15,7 @@ import io
 import pytest
 
 from app.services.pricelist_parser import (
+    _PRICE_IN_LINE,  # narx satrini tanish shabloni — regressiya sinovlari uchun
     map_columns,
     parse_pricelist,
     parse_price,
@@ -274,3 +275,56 @@ def test_parse_xlsx():
     assert len(result.offers) == 2
     assert result.offers[0].price_gross == 850
     assert result.offers[0].nights == 7
+
+
+# --------------------------------------------------------------------------
+# Valyuta so'z bilan yozilgan holat
+# --------------------------------------------------------------------------
+# Bu yerdagi ro'yxat ilgari `tour_taxonomy.CURRENCY_ALIASES` dan QO'LDA
+# nusxalangan edi va vaqt o'tib undan ajralib ketgan: taksonomiyada "dollar",
+# "сўм", "долл", "rubl", "euro" bor edi, tahlilchidagi nusxada yo'q. Natijada
+# narxi shunday yozilgan satr "narxsiz" deb hisoblanib, sarlavha o'rnida qabul
+# qilinar va JIMGINA tashlab yuborilardi — foydalanuvchi taklif yo'qolganini
+# bilmasdi. Endi regex bitta manbadan yasaladi.
+@pytest.mark.parametrize(
+    "yozuv",
+    [
+        "890 dollar",      # lotincha — o'zbek operatorlari eng ko'p shunday yozadi
+        "1200 долл",       # qisqartma
+        "450 евро",
+        "750 euro",
+        "900 rubl",
+        "300 сўм",         # kirill "o'" bilan
+        "12 000 000 so'm",
+        "12 000 000 soʻm",   # tutuq belgisi (U+02BB)
+        "12 000 000 so’m",   # tipografik apostrof (U+2019)
+    ],
+)
+def test_narx_valyuta_sozi_bilan_tanaladi(yozuv):
+    assert _PRICE_IN_LINE.search(yozuv), f"tanilmadi: {yozuv}"
+
+
+@pytest.mark.parametrize(
+    "yozuv", ["500 summa", "Antalya 7 kecha", "Aloqa: +998 90 123 45 67"]
+)
+def test_valyutaga_oxshamagan_matn_narx_deb_olinmaydi(yozuv):
+    r"""`(?!\w)` qo'riqchisi: "summa" ichidagi "sum" valyuta emas."""
+    assert not _PRICE_IN_LINE.search(yozuv)
+
+
+def test_sozli_valyutali_satr_taklifga_aylanadi():
+    """Butun zanjir: shunday satr endi taklif bo'lib chiqishi kerak."""
+    matn = (
+        "ANTALYA 7 kecha\n"
+        "Rixos Downtown 5* UAI — $850\n"
+        "Sunrise Diamond 4* AI — 890 dollar\n"
+    )
+    result = parse_text(matn)
+    nomlar = [o.hotel_name for o in result.offers]
+    assert "Sunrise Diamond" in nomlar, f"topilgan: {nomlar}"
+
+    sunrise = next(o for o in result.offers if o.hotel_name == "Sunrise Diamond")
+    assert sunrise.price_gross == 890
+    assert sunrise.currency == "USD"
+    # Sarlavhadagi yo'nalish va kecha bu satrga ham tarqalsin.
+    assert sunrise.nights == 7

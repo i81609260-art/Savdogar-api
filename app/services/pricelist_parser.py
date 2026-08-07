@@ -35,6 +35,7 @@ from typing import Any, Iterable, Optional
 
 from app.services.operator_connector import RawOffer
 from app.services.tour_taxonomy import (
+    CURRENCY_ALIASES,
     Destination,
     match_board,
     match_currency,
@@ -114,7 +115,27 @@ def map_columns(headers: Iterable[Any]) -> dict[int, str]:
 # --------------------------------------------------------------------------
 # Narx
 # --------------------------------------------------------------------------
-_CURRENCY_IN_PRICE = re.compile(r"(usd|uzs|eur|rub|\$|€|₽|so'?m|sum|доллар|евро|руб)", re.I)
+# Valyuta taxalluslari BITTA manbadan — `CURRENCY_ALIASES`.
+#
+# Ilgari bu ro'yxat shu faylda qo'lda takrorlangan edi va vaqt o'tib
+# taksonomiyadan ajralib ketdi: u yerda "dollar", "сўм", "долл", "rubl",
+# "euro" bor edi, bu yerdagi nusxada yo'q. Natijada "890 dollar" narxi
+# tanilmasdi. Endi ro'yxat bitta joyda — ajralib ketishi mumkin emas.
+_CURRENCY_WORDS = "|".join(
+    sorted(
+        (
+            # Apostrof turlicha yoziladi: so'm / soʻm / so'm / som
+            re.escape(alias).replace("'", "['‘’ʻ]?")
+            for aliases in CURRENCY_ALIASES.values()
+            for alias in aliases
+        ),
+        key=len,
+        reverse=True,  # "доллар" "долл" dan oldin tekshirilsin
+    )
+)
+
+# `(?!\w)` — "500 summa" ichidagi "sum" ni valyuta deb o'qimasin.
+_CURRENCY_IN_PRICE = re.compile(rf"({_CURRENCY_WORDS})(?!\w)", re.I)
 
 
 def parse_price(value: Any) -> tuple[Optional[float], Optional[str]]:
@@ -339,9 +360,16 @@ def _first_name(destinations: list[Destination], country: bool) -> Optional[str]
 # Matn (Telegram xabari)
 # --------------------------------------------------------------------------
 # "Rixos Downtown 5* UAI — $850" ko'rinishidagi satrlar.
+#
+# Narxi tanilmagan satr sarlavha (kontekst) o'rnida qabul qilinadi va jimgina
+# tashlab yuboriladi — shuning uchun bu yerdagi valyuta ro'yxati to'liq
+# bo'lishi muhim. U `_CURRENCY_WORDS` orqali taksonomiyaga bog'langan.
 _PRICE_IN_LINE = re.compile(
+    # Belgi narxdan oldin: "$850". Faqat belgilar — "usd 850" deb yozilmaydi.
     r"(?:\$|€|₽)\s*\d[\d\s.,]*|"
-    r"\d[\d\s.,]*\s*(?:\$|€|₽|usd|eur|uzs|rub|so'?m|sum|доллар|евро|руб)",
+    # Valyuta narxdan keyin: "850 $", "890 dollar", "12 000 000 so'm".
+    # `(?!\w)` — "500 summa" ichidagi "sum" ni valyuta deb o'qimasin.
+    rf"\d[\d\s.,]*\s*(?:{_CURRENCY_WORDS})(?!\w)",
     re.I,
 )
 

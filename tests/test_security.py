@@ -276,7 +276,7 @@ def test_socket_xonasi_firma_boyicha_tekshiriladi():
 # ── Superadmin ────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_superadmin_paroli_startupda_tiklanmaydi(monkeypatch):
+async def test_superadmin_paroli_startupda_tiklanmaydi(setup_db, monkeypatch):
     """Parol almashtirilgach, seed_superadmin uni qayta yozmasligi kerak."""
     import app.database as dbmod
     from app.main import seed_superadmin
@@ -301,7 +301,7 @@ async def test_superadmin_paroli_startupda_tiklanmaydi(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_superadmin_yoq_bolsa_yaratiladi(monkeypatch):
+async def test_superadmin_yoq_bolsa_yaratiladi(setup_db, monkeypatch):
     """Yangi o'rnatishda sozlamalardagi login/parol ishlashi kerak."""
     import app.database as dbmod
     from app.main import seed_superadmin

@@ -935,10 +935,15 @@ async def _start_tour_search(db: AsyncSession, cid: int, message: str) -> dict:
     if not offers:
         return _reply(
             f"«{summarize(query)}» bo'yicha narx topilmadi.\n\n"
-            "Operatordan kelgan price-list'ni yuklang: panel → <b>Narxlar</b>, "
+            "Operatordan kelgan price-list'ni yuklang: panel → Narxlar, "
             "yoki price-list'ni firma botiga forward qiling."
         )
 
+    # Javob ODDIY MATN bo'lishi kerak. Bu funksiyaning javoblari veb-paneldagi
+    # chatga boradi (`routers/assistant.py`), u esa HTML'ni ekranlaydi —
+    # `<b>` yozilsa foydalanuvchi ekranda tegning o'zini ko'rardi. HTML faqat
+    # Telegram uchun yozilgan formatlovchilarda o'rinli, chunki xabar
+    # `parse_mode="HTML"` bilan yuboriladi (`telegram_commands.py`).
     lines = [f"🔎 {summarize(query)}"]
 
     # Yumshatilgan shartni JIM qoldirish mumkin emas — agent natijani
@@ -953,7 +958,7 @@ async def _start_tour_search(db: AsyncSession, cid: int, message: str) -> dict:
         best = group[0]
         star = f"{best.star}*" if best.star else ""
         head = " ".join(p for p in (best.hotel_name, star, best.board) if p)
-        lines.append(f"🏨 <b>{head}</b>")
+        lines.append(f"🏨 {head}")
 
         for offer in group[:3]:
             # Minglik ajratgichni almashtirish HAR DOIM faqat raqamga
@@ -981,7 +986,7 @@ async def _start_tour_search(db: AsyncSession, cid: int, message: str) -> dict:
 
     if len(groups) > 5:
         lines.append(f"… va yana {len(groups) - 5} ta variant")
-    lines.append("To'liq ro'yxat: panel → <b>Narxlar</b>")
+    lines.append("To'liq ro'yxat: panel → Narxlar")
 
     return _reply("\n".join(lines), actions=["open_prices"])
 

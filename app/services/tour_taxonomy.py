@@ -118,8 +118,11 @@ CATEGORY_ALIASES: dict[TourCategory, tuple[str, ...]] = {
         "otdix", "отдых",
     ),
     TourCategory.EXCURSION: (
+        # "tur" ATAYLAB yo'q: o'zbekchada u umumiy so'z ("tur qidir",
+        # "tur paket", "tur agent"), shuning uchun deyarli har bir so'rov
+        # noto'g'ri Ekskursiya deb belgilanardi.
         "ekskursiya", "экскурсия", "экскурсионный", "excursion", "sayohat",
-        "sightseeing", "tur",
+        "sightseeing",
     ),
     TourCategory.MEDICAL: (
         "davolanish", "лечение", "лечебный", "санаторий", "sanatoriy",

@@ -164,6 +164,31 @@ def test_haj_not_confused_with_umra():
     assert match_category("umra 2026") == TourCategory.UMRA
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "tur qidir",
+        "Antalyaga tur",
+        "eng arzon tur paket",
+        "tur operatorlardan qidir",
+    ],
+)
+def test_umumiy_tur_sozi_kategoriya_bermaydi(text):
+    """"tur" — o'zbekchada umumiy so'z, kategoriya emas.
+
+    U ilgari EXCURSION taxallusi edi, shuning uchun deyarli HAR BIR so'rov
+    "Ekskursiya" deb belgilanardi va agent xulosada mijoz so'ramagan
+    kategoriyani ko'rardi.
+    """
+    assert match_category(text) is None
+
+
+def test_haqiqiy_ekskursiya_hali_ham_tanaladi():
+    """"tur" olib tashlangani aniq so'zlarni buzmasligi kerak."""
+    assert match_category("ekskursiya dasturi") == TourCategory.EXCURSION
+    assert match_category("экскурсионный тур") == TourCategory.EXCURSION
+
+
 # --------------------------------------------------------------------------
 # Yulduz va valyuta
 # --------------------------------------------------------------------------

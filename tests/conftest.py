@@ -1,6 +1,7 @@
 """Pytest fixtures for SAYR API tests."""
 
 import asyncio
+from functools import lru_cache
 from typing import AsyncGenerator, Generator
 
 import pytest
@@ -21,7 +22,19 @@ from app.utils.limiter import limiter
 limiter.enabled = False
 from app.models.company import Company, CompanyStatus
 from app.models.user import User, UserRole
-from app.utils.security import hash_password
+from app.utils.security import hash_password as _hash_password
+
+
+# bcrypt ATAYLAB sekin — bitta hash ~186 ms. `setup_db` esa `autouse` va har
+# bir sinovdan oldin ishlaydi, ya'ni bu narx BUTUN to'plamga, hatto bazaga
+# umuman tegmaydigan sof funksiya sinovlariga ham qo'shilardi (~0.5 s/sinov).
+#
+# Sinovlarda parollar o'zgarmas va sanoqli, shuning uchun natijani keshlaymiz.
+# Xavfsizlikka ta'sir qilmaydi: bu faqat sinov ma'lumotini tayyorlash, tekshirish
+# esa haqiqiy `verify_password` orqali o'tadi.
+@lru_cache(maxsize=None)
+def hash_password(password: str) -> str:
+    return _hash_password(password)
 
 settings = get_settings()
 
@@ -46,9 +59,17 @@ def event_loop() -> Generator:
     loop.close()
 
 
-@pytest_asyncio.fixture(autouse=True)
+@pytest_asyncio.fixture
 async def setup_db():
-    """Reset database before each test."""
+    """Har bir sinovdan oldin bazani tozalab, sinov ma'lumotini yaratadi.
+
+    ATAYLAB `autouse` EMAS. Ilgari shunday edi va bu tayyorgarlik (~2 s)
+    bazaga umuman tegmaydigan sinovlarga ham qo'shilardi — taksonomiya,
+    price-list tahlilchisi, Tella qidiruvi kabi sof funksiya fayllari
+    (15 tadan 6 tasi). To'plam shu sababli o'nlab daqiqa yurardi.
+
+    Bazaga muhtoj sinovlar uni `client` yoki `db_session` orqali oladi.
+    """
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
@@ -105,8 +126,8 @@ async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest_asyncio.fixture
-async def client() -> AsyncGenerator[AsyncClient, None]:
-    """HTTP test client."""
+async def client(setup_db) -> AsyncGenerator[AsyncClient, None]:
+    """HTTP test client. `setup_db` — bazani tayyorlaydi (avval autouse edi)."""
     app.dependency_overrides[get_db] = override_get_db
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -115,7 +136,7 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
 
 
 @pytest_asyncio.fixture
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
+async def db_session(setup_db) -> AsyncGenerator[AsyncSession, None]:
     """Test bazasiga to'g'ridan-to'g'ri sessiya (natijani tekshirish uchun)."""
     async with TestSessionLocal() as session:
         yield session
