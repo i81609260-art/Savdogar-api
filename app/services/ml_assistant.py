@@ -146,6 +146,26 @@ INTENT_TRAINING += SEARCH_TRAINING
 
 _CONF_THRESHOLD = 0.18  # past ishonchda -> unknown
 
+
+def _looks_like_tour_search(text: str) -> bool:
+    """Matn tuzilishiga qarab tur qidiruvini taniydi (kalit so'zsiz).
+
+    Shart: yo'nalish BOR va unga qo'shimcha kamida bitta o'lchov bor
+    (kecha, byudjet, kishi soni, ovqat yoki yulduz). Yolg'iz yo'nalish
+    yetarli emas — "Antalya" so'zi boshqa gaplarda ham uchraydi.
+    """
+    query = extract_query(text or "")
+    if not query.destinations:
+        return False
+    return any((
+        query.nights,
+        query.budget_max,
+        query.budget_min,
+        query.adults,
+        query.board,
+        query.star,
+    ))
+
 # Kritik intentlar uchun kalit soʻz tayanchi (kichik dataset ishonchsizligiga qarshi).
 # DIQQAT: birinchi mos kelgan kalit gʻalaba qiladi, shuning uchun aniqroq
 # (koʻp soʻzli) iboralar umumiylaridan OLDIN turishi shart. Masalan
@@ -254,7 +274,21 @@ class _LearningStore:
             if kw in t:
                 if conf < 0.5 or kw_intent in _WRITE_INTENTS:
                     return kw_intent, max(conf, 0.6)
-        if conf < _CONF_THRESHOLD:
+        # "Tushunmadim" ikki yo'l bilan kelib chiqadi: ishonch chegaradan
+        # past, YOKI modelning o'zi "unknown" sinfini tanlagan. Amalda
+        # ikkinchisi ko'proq uchraydi (0.23 ishonch bilan ham), shuning
+        # uchun faqat chegarani tekshirish yetarli emas.
+        if conf < _CONF_THRESHOLD or intent == "unknown":
+            # Tur qidiruvi ilgari FAQAT kalit so'zga tayanardi ("qidir",
+            # "eng arzon", "podbor"...). Turagent esa ko'pincha shunchaki
+            # shartlarni yozadi — "Sharmga 10 kecha 1000 dollargacha" — va
+            # javob o'rniga "tushunmadim" olardi.
+            #
+            # Bu tekshiruv FAQAT shu tarmoqda turadi: bu yerga yetib kelgan
+            # matn allaqachon hech qaysi niyatga tegishli emas deb topilgan,
+            # shuning uchun ishlayotgan biror oqimni tortib ololmaydi.
+            if _looks_like_tour_search(text):
+                return SEARCH_INTENT, max(conf, 0.6)
             return "unknown", conf
         return intent, conf
 

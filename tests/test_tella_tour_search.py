@@ -260,3 +260,59 @@ def test_existing_intents_still_work():
     ):
         intent, _ = _store().predict(text)
         assert intent == expected, f"{text!r} -> {intent}"
+
+
+# --------------------------------------------------------------------------
+# Kalit so'zsiz qidiruv
+# --------------------------------------------------------------------------
+# Qidiruv ilgari FAQAT kalit so'zga tayanardi ("qidir", "eng arzon",
+# "podbor"...). Turagent esa ko'pincha shunchaki shartlarni yozadi —
+# "Sharmga 10 kecha 1000 dollargacha" — va javob o'rniga "tushunmadim"
+# olardi. Endi yo'nalish + kamida bitta o'lchov bo'lsa, qidiruv deb olinadi.
+@pytest.mark.parametrize(
+    "matn",
+    [
+        "Sharmga 10 kecha 1000 dollargacha",
+        "Antalyaga 7 kecha 900 dollargacha",
+        "Dubayga 5 kecha 2 kishi",
+        "Antalya 5* UAI",
+    ],
+)
+def test_kalit_sozsiz_qidiruv_tanaladi(matn):
+    from app.services.ml_assistant import _store
+
+    intent, _ = _store().predict(matn)
+    assert intent == SEARCH_INTENT, f"{matn!r} -> {intent}"
+
+
+@pytest.mark.parametrize(
+    "matn",
+    [
+        "Antalya",          # yolg'iz yo'nalish — boshqa gaplarda ham uchraydi
+        "salom qalaysan",
+    ],
+)
+def test_yolgiz_yonalish_qidiruv_deb_olinmaydi(matn):
+    """Ikkinchi o'lchovsiz qidiruv deb hisoblamaslik kerak."""
+    from app.services.ml_assistant import _store
+
+    intent, _ = _store().predict(matn)
+    assert intent != SEARCH_INTENT, f"{matn!r} -> {intent}"
+
+
+def test_yozuv_niyatlari_qidiruvga_tortilmaydi():
+    """ENG MUHIMI: yangi qoida ishlayotgan oqimlarni buzmasligi kerak.
+
+    "Antalyaga tur qosh" da ham yo'nalish bor, lekin bu tur YARATISH.
+    Yangi tekshiruv faqat "tushunmadim" tarmog'ida turgani uchun bunday
+    so'rovlar unga umuman yetib bormaydi.
+    """
+    from app.services.ml_assistant import _store
+
+    for matn, kutilgan in (
+        ("Antalyaga tur qosh", "create_tour"),
+        ("Dubay turining narxini ozgartir", "update_price"),
+        ("yangi tur qosh", "create_tour"),
+    ):
+        intent, _ = _store().predict(matn)
+        assert intent == kutilgan, f"{matn!r} -> {intent}"
