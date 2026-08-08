@@ -3,7 +3,7 @@
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import event, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -27,6 +27,18 @@ class Tour(Base):
     country: Mapped[str] = mapped_column(String(100), default="Uzbekistan")
     price: Mapped[float] = mapped_column(Float)
     currency: Mapped[str] = mapped_column(String(10), default="UZS")
+    # Saralash va narx filtri UCHUN so'mga o'girilgan qiymat.
+    #
+    # `price` ning o'zi bilan solishtirib bo'lmaydi: u oddiy son, valyuta
+    # esa alohida ustunda. Shu sababli 10 001 EUR (≈137 mln so'm) 12 mln
+    # so'mlik turdan "arzonroq" bo'lib chiqardi.
+    #
+    # Ko'rsatishda ISHLATILMAYDI — mijoz asl valyutani ko'radi ("10 001 €").
+    # Kurs o'zgarsa bu qiymat eskiradi: u buxgalteriya uchun emas,
+    # TARTIBLASH uchun mo'ljallangan.
+    price_uzs: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True, index=True
+    )
     duration_days: Mapped[int] = mapped_column(Integer, default=1)
     # Dates are optional — a tour may have "flexible / to be agreed" dates.
     start_date: Mapped[Optional[date]] = mapped_column(Date, index=True, nullable=True)
@@ -49,3 +61,23 @@ class Tour(Base):
     company: Mapped["Company"] = relationship("Company", back_populates="tours")
     bookings: Mapped[list["Booking"]] = relationship("Booking", back_populates="tour")
     groups: Mapped[list["TourGroup"]] = relationship("TourGroup", back_populates="tour")
+
+
+# --------------------------------------------------------------------------
+# `price_uzs` ni avtomatik hisoblash
+# --------------------------------------------------------------------------
+# Bu hisob ATAYLAB modelga bog'langan, servisga emas.
+#
+# Ilgari u faqat `TourService.create_tour` ichida edi va tur boshqa yo'l
+# bilan yaratilsa (import skripti, sinov fikstursi, kelajakdagi yangi kod)
+# `price_uzs` NULL bo'lib qolardi. Bunday tur saralashda ro'yxat oxiriga
+# tushib ketardi va buni sezish qiyin — xato jimgina bo'lardi.
+#
+# Tinglovchi SINXRON: `to_uzs` keshdagi kursdan foydalanadi va tarmoqqa
+# chiqmaydi, shuning uchun yozish amali sekinlashmaydi.
+@event.listens_for(Tour, "before_insert")
+@event.listens_for(Tour, "before_update")
+def _hisobla_price_uzs(mapper, connection, target: "Tour") -> None:  # noqa: ARG001
+    from app.services.currency import to_uzs
+
+    target.price_uzs = to_uzs(target.price, target.currency)

@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 from app.models.company import Company, CompanyStatus
 from app.models.tour import Tour
 from app.models.user import User
+from app.services.currency import refresh_rates
 from app.schemas.tour import TourCreate, TourResponse, TourUpdate
 from app.utils.pagination import PaginatedResponse, paginate
 
@@ -87,10 +88,13 @@ class TourService:
             conditions.append(Tour.branch_id == branch_filter)
         if city:
             conditions.append(Tour.city.ilike(f"%{city}%"))
+        # Narx oralig'i ham so'mda solishtiriladi. `price` bilan
+        # solishtirilganda "5-10 mln" filtri 10 001 EUR turni ham ichiga
+        # olardi, chunki 10001 raqami oraliqqa tushardi.
         if min_price is not None:
-            conditions.append(Tour.price >= min_price)
+            conditions.append(Tour.price_uzs >= min_price)
         if max_price is not None:
-            conditions.append(Tour.price <= max_price)
+            conditions.append(Tour.price_uzs <= max_price)
         if start_date:
             conditions.append(Tour.start_date >= start_date)
         if min_slots is not None:
@@ -117,8 +121,11 @@ class TourService:
         # tanlov kerak. Noma'lum qiymat jimgina sukutga tushadi: xato
         # so'rov butun sahifani yiqitmasligi kerak.
         order = {
-            "narx_arzon": Tour.price.asc(),
-            "narx_qimmat": Tour.price.desc(),
+            # `price_uzs` bo'yicha: `price` valyutalarni aralashtirardi.
+            # Eski turlarda u NULL bo'lishi mumkin, shuning uchun ular
+            # oxiriga tushadi va ro'yxat boshini egallamaydi.
+            "narx_arzon": Tour.price_uzs.asc().nulls_last(),
+            "narx_qimmat": Tour.price_uzs.desc().nulls_last(),
             "sana": Tour.start_date.asc().nulls_last(),
             "yangi": Tour.created_at.desc(),
         }.get(sort or "", Tour.created_at.desc())
@@ -185,6 +192,11 @@ class TourService:
             booking_type=data.booking_type,
             branch_id=branch_id,
         )
+        # Kursni YANGILAB qo'yamiz. Hisobning o'zini model tinglovchisi
+        # bajaradi (`models/tour.py`) — u sinxron va tarmoqqa chiqolmaydi,
+        # shuning uchun kesh shu yerda iliq holga keltiriladi.
+        await refresh_rates()
+
         self.db.add(tour)
         await self.db.flush()
         await self.db.refresh(tour)
@@ -205,8 +217,15 @@ class TourService:
         if tour.company_id != user.company_id:
             raise HTTPException(status_code=403, detail="Bu tur sizga tegishli emas")
 
-        for field, value in data.model_dump(exclude_unset=True).items():
+        ozgargan = data.model_dump(exclude_unset=True)
+        for field, value in ozgargan.items():
             setattr(tour, field, value)
+
+        # Narx yoki valyuta o'zgarsa kursni yangilaymiz; qayta hisoblashni
+        # model tinglovchisi o'zi qiladi.
+        if "price" in ozgargan or "currency" in ozgargan:
+            await refresh_rates()
+
         await self.db.flush()
         return await self.get_tour(tour_id)
 

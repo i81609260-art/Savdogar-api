@@ -118,8 +118,48 @@ async def lifespan(app: FastAPI):
         logging.getLogger(__name__).debug("Eski mehmon hisoblari yangilanmadi: %s", exc)
 
     await migrate_call_audio_to_private()
+    await backfill_price_uzs()
     await seed_superadmin()
     yield
+
+
+async def backfill_price_uzs():
+    """Eski turlarga so'mdagi narxni bir marta hisoblab qo'yadi.
+
+    `price_uzs` keyinchalik qo'shilgan ustun, shuning uchun mavjud turlarda
+    u `NULL`. Saralashda ular `nulls_last` tufayli oxiriga tushardi — ya'ni
+    eski turlar ro'yxat oxirida qolib ketardi.
+
+    FAQAT `NULL` bo'lganlar yangilanadi: bu amal har startda ishlaydi va
+    hammasini qayta hisoblasa, kurs har kuni o'zgargani uchun turlarning
+    tartibi sababsiz o'zgarib turardi.
+
+    Xato bo'lsa ilova ishga tushishi TO'XTAMAYDI — bu tuzatuv amali,
+    mahsulotning ishlashi unga bog'liq emas.
+    """
+    from sqlalchemy import select as _select
+
+    from app.database import AsyncSessionLocal
+    from app.models.tour import Tour
+    from app.services.currency import refresh_rates, to_uzs
+
+    log = logging.getLogger(__name__)
+    try:
+        await refresh_rates()
+        async with AsyncSessionLocal() as session:
+            rows = (
+                await session.execute(
+                    _select(Tour).where(Tour.price_uzs.is_(None))
+                )
+            ).scalars().all()
+            if not rows:
+                return
+            for tour in rows:
+                tour.price_uzs = to_uzs(tour.price, tour.currency)
+            await session.commit()
+            log.info("price_uzs to'ldirildi: %s ta tur", len(rows))
+    except Exception as exc:  # noqa: BLE001
+        log.warning("price_uzs to'ldirilmadi: %s", exc)
 
 
 async def migrate_call_audio_to_private():

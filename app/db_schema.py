@@ -48,6 +48,9 @@ _load_all_models()
 SCHEMA_PATCHES: list[str] = [
 # Konnektor retsepti — jadval yaratilgandan keyin qo'shilgan ustun.
 "ALTER TABLE tour_operators ADD COLUMN connector_config TEXT",
+# Saralash va narx filtri uchun so'mga o'girilgan narx. Mavjud turlarda
+# `NULL` bo'lib qoladi va startda bir marta to'ldiriladi (`backfill_price_uzs`).
+"ALTER TABLE tours ADD COLUMN price_uzs FLOAT",
 # Tavsiya tizimiga rozilik. Mavjud firmalarga O'CHIQ holda qo'shiladi —
 # hech kim so'ralmasdan tavsiya ro'yxatiga tushib qolmasin.
 #

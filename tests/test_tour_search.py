@@ -142,3 +142,71 @@ async def test_cities_tur_raqami_deb_oqilmaydi(client: AsyncClient):
     javob = await client.get("/api/tours/cities")
     assert javob.status_code == 200
     assert isinstance(javob.json(), list)
+
+
+# --------------------------------------------------------------------------
+# Valyutalararo saralash
+# --------------------------------------------------------------------------
+async def test_saralash_valyutalarni_aralashtirmaydi(client: AsyncClient):
+    """ENG MUHIMI: 10 001 EUR 12 mln so'mdan QIMMAT.
+
+    Xom `price` bo'yicha saralaganda 10001 < 12000000 bo'lgani uchun
+    yevroli tur "arzon" deb birinchi chiqardi. Endi solishtirish so'mda
+    bo'ladi.
+    """
+    import app.services.currency as cur
+
+    cur._cache.clear()
+    cur._cache.update({"UZS": 1.0, "EUR": 13749.46})
+
+    async with TestSessionLocal() as db:
+        firma = (
+            await db.execute(select(Company).where(Company.slug == "test-firma"))
+        ).scalar_one()
+        db.add_all([
+            Tour(
+                company_id=firma.id, title="Somdagi", description="d",
+                city="Toshkent", price=12_000_000, currency="UZS",
+                price_uzs=12_000_000, duration_days=3, available_slots=5,
+            ),
+            Tour(
+                company_id=firma.id, title="Yevrodagi", description="d",
+                city="Parij", price=10_001, currency="EUR",
+                price_uzs=10_001 * 13749.46, duration_days=3, available_slots=5,
+            ),
+        ])
+        await db.commit()
+
+    items = (await client.get("/api/tours?sort=narx_arzon")).json()["items"]
+    assert [t["title"] for t in items] == ["Somdagi", "Yevrodagi"], (
+        "so'mdagi tur arzonroq bo'lishi kerak"
+    )
+
+
+async def test_narx_filtri_ham_somda(client: AsyncClient):
+    """"5-15 mln" filtri 10 001 EUR turni ICHIGA OLMASLIGI kerak.
+
+    Xom raqam bilan solishtirilganda 10001 oraliqqa tushib qolardi.
+    """
+    async with TestSessionLocal() as db:
+        firma = (
+            await db.execute(select(Company).where(Company.slug == "test-firma"))
+        ).scalar_one()
+        db.add_all([
+            Tour(
+                company_id=firma.id, title="Somdagi", description="d",
+                city="Toshkent", price=12_000_000, currency="UZS",
+                price_uzs=12_000_000, duration_days=3, available_slots=5,
+            ),
+            Tour(
+                company_id=firma.id, title="Yevrodagi", description="d",
+                city="Parij", price=10_001, currency="EUR",
+                price_uzs=10_001 * 13749.46, duration_days=3, available_slots=5,
+            ),
+        ])
+        await db.commit()
+
+    items = (
+        await client.get("/api/tours?min_price=5000000&max_price=15000000")
+    ).json()["items"]
+    assert [t["title"] for t in items] == ["Somdagi"]
