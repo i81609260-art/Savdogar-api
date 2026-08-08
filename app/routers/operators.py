@@ -20,8 +20,9 @@ ochiq qaytmaydi — faqat niqoblangan ko'rinish (`is••••@mail.uz`).
 from __future__ import annotations
 
 import json
-from datetime import datetime
-from typing import Optional
+import logging
+from datetime import datetime, timezone
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -37,11 +38,19 @@ from app.models.tour_operator import (
     TourOperator,
 )
 from app.models.user import User, UserRole
-from app.services.operator_connector import registry
-from app.services.playwright_connector import SearchRecipe
+from app.services.browser_runner import BrowserUnavailable, run_in_browser
+from app.services.operator_connector import (
+    ConnectorContext,
+    ConnectorStatus,
+    registry,
+)
+from app.services.playwright_connector import SearchRecipe, build_connector
+from app.services.tella_tour_search import TourSearchQuery
 from app.services.tour_taxonomy import taxonomy_snapshot
 from app.utils import crypto
 from app.utils.slug import slugify
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/operators", tags=["Tur operatorlar"])
 
@@ -173,6 +182,21 @@ def _account_out(account: Optional[OperatorAccount]) -> Optional[AccountOut]:
         last_error=account.last_error,
     )
 
+
+
+def _load_session(account: OperatorAccount) -> Optional[dict]:
+    """Saqlangan brauzer seansini ochadi.
+
+    Buzuq yoki eski seans butun kirishni yiqitmasligi kerak — bunday holda
+    shunchaki seanssiz, oddiy login yo'li bilan davom etamiz.
+    """
+    if not account.session_enc:
+        return None
+    try:
+        return json.loads(crypto.decrypt(account.session_enc) or "")
+    except Exception:  # noqa: BLE001
+        log.info("Saqlangan seans o'qilmadi (account=%s) — qaytadan kiramiz", account.id)
+        return None
 
 def _can_edit_recipe(operator: TourOperator, user: User) -> bool:
     """Retseptni kim tahrirlay oladi.
@@ -437,3 +461,124 @@ async def clear_account(
     account.last_error = None
     await db.flush()
     return _account_out(account)
+
+
+# --------------------------------------------------------------------------
+# Kabinetga kirishni tekshirish
+# --------------------------------------------------------------------------
+# Bu endpoint yetishmayotgan bo'g'in edi. `PlaywrightConnector` login
+# mantiqini biladi, `browser_runner` brauzer ochadi — lekin ularni HECH KIM
+# birlashtirmasdi. Turagent kabinet manzili va login-parolni kiritardi,
+# ular shifrlanib saqlanardi va shu bilan tamom: hech qayerga kirilmasdi,
+# hisob holati abadiy "yangi" (sinalmagan) bo'lib qolardi.
+#
+# Retsept SHART EMAS. Kirish uchun faqat kabinet manzili va login-parol
+# kerak; retsept keyinroq, avtomatik QIDIRUV uchun kerak bo'ladi.
+_STATUS_BY_CONNECTOR: dict[ConnectorStatus, AccountStatus] = {
+    ConnectorStatus.OK: AccountStatus.OK,
+    ConnectorStatus.AUTH_FAILED: AccountStatus.AUTH_FAILED,
+    ConnectorStatus.CAPTCHA: AccountStatus.CAPTCHA,
+}
+
+_MESSAGE_BY_STATUS: dict[AccountStatus, str] = {
+    AccountStatus.OK: "Kabinetga muvaffaqiyatli kirildi.",
+    AccountStatus.AUTH_FAILED: (
+        "Login yoki parol qabul qilinmadi. Kabinetga brauzerdan kirib "
+        "tekshiring va qayta kiriting."
+    ),
+    AccountStatus.CAPTCHA: (
+        "Operator sayti captcha so'rayapti — serverdagi brauzer uni "
+        "o'tolmaydi. Kabinetga o'zingiz kirib captchani bosing, keyin "
+        "qaytadan urinib ko'ring."
+    ),
+    AccountStatus.BLOCKED: (
+        "Kabinet ochilmadi yoki javob bermadi. Manzil to'g'riligini "
+        "tekshiring."
+    ),
+}
+
+
+class LoginTestOut(BaseModel):
+    ok: bool
+    status: AccountStatus
+    message: str
+    account: Optional[AccountOut] = None
+
+
+@router.post("/{operator_id}/login-test", summary="Kabinetga kirishni tekshirish")
+async def test_login(
+    operator_id: int,
+    current_user: User = Depends(_WRITE),
+    db: AsyncSession = Depends(get_db),
+) -> LoginTestOut:
+    """Saqlangan login-parol bilan operator kabinetiga haqiqatan kiradi."""
+    cid = current_user.company_id
+    if not cid:
+        raise HTTPException(status_code=400, detail="Kompaniyaga biriktirilmagansiz")
+
+    operator = await _get_visible_operator(db, cid, operator_id)
+    account = await _get_account(db, cid, operator_id)
+    if account is None or not account.password_enc:
+        raise HTTPException(
+            status_code=400,
+            detail="Avval kabinet login va parolini kiriting",
+        )
+
+    login_url = operator.login_url or operator.website
+    if not login_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Operatorda B2B kabinet manzili ko'rsatilmagan",
+        )
+
+    connector = build_connector(operator.connector_config)
+    ctx = ConnectorContext(
+        query=TourSearchQuery(),          # login uchun so'rov kerak emas
+        login=crypto.decrypt(account.login_enc),
+        password=crypto.decrypt(account.password_enc),
+        login_url=login_url,
+        storage_state=_load_session(account),
+    )
+
+    async def _do(page: Any) -> ConnectorStatus:
+        ctx.page = page
+        return await connector.login(ctx)
+
+    try:
+        outcome = await run_in_browser(_do, storage_state=ctx.storage_state)
+        conn_status: ConnectorStatus = outcome.value
+    except BrowserUnavailable as exc:
+        # Bu sozlash muammosi, turagentning parolida emas — hisob holatini
+        # "parol xato" deb belgilab qo'yish noto'g'ri bo'lardi.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Kabinetga kirish uzildi (operator=%s): %s", operator_id, exc)
+        account.status = AccountStatus.BLOCKED
+        account.last_error = str(exc)[:500]
+        await db.flush()
+        return LoginTestOut(
+            ok=False,
+            status=AccountStatus.BLOCKED,
+            message=_MESSAGE_BY_STATUS[AccountStatus.BLOCKED],
+            account=_account_out(account),
+        )
+
+    status = _STATUS_BY_CONNECTOR.get(conn_status, AccountStatus.BLOCKED)
+    account.status = status
+
+    if status is AccountStatus.OK:
+        account.last_ok_at = datetime.now(timezone.utc)
+        account.last_error = None
+        # Seansni saqlaymiz — keyingi safar login formasi ochilmaydi va
+        # operator sayti takror kirishlarni ko'rmaydi.
+        account.session_enc = crypto.encrypt(json.dumps(outcome.storage_state))
+    else:
+        account.last_error = _MESSAGE_BY_STATUS.get(status)
+
+    await db.flush()
+    return LoginTestOut(
+        ok=status is AccountStatus.OK,
+        status=status,
+        message=_MESSAGE_BY_STATUS.get(status, "Noma'lum natija."),
+        account=_account_out(account),
+    )

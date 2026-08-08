@@ -552,3 +552,172 @@ async def test_taxonomy_endpoint(client: AsyncClient, auth_headers):
     data = response.json()
     assert data["countries"][0]["code"] == "SA", "Saudiya birinchi bo'lishi kerak"
     assert any(c["code"] == "umra" for c in data["categories"])
+
+
+# ==========================================================================
+# Kabinetga kirishni tekshirish (`POST /{id}/login-test`)
+# ==========================================================================
+# Bu oqim ilgari UMUMAN yo'q edi: login-parol shifrlanib saqlanardi, lekin
+# ular bilan hech qayerga kirilmasdi va hisob holati abadiy "yangi" bo'lib
+# qolardi. Testlar brauzerni soxtalashtiradi — haqiqiy Chromium kerak emas.
+from app.services.operator_connector import ConnectorStatus  # noqa: E402
+
+
+class _SoxtaNatija:
+    def __init__(self, value, storage_state=None):
+        self.value = value
+        self.storage_state = storage_state
+
+
+def _soxta_brauzer(monkeypatch, natija=None, xato=None):
+    """`run_in_browser` ni almashtiradi."""
+    import app.routers.operators as router_mod
+
+    async def _fake(action, *, storage_state=None, timeout_ms=None):
+        if xato is not None:
+            raise xato
+        return _SoxtaNatija(natija, {"cookies": [{"name": "sid", "value": "x"}]})
+
+    monkeypatch.setattr(router_mod, "run_in_browser", _fake)
+
+
+async def _operator_bilan_hisob(client: AsyncClient, auth_headers) -> int:
+    """Kabinet manzili va login-paroli bor operator yaratadi."""
+    created = await client.post(
+        "/api/operators",
+        headers=auth_headers,
+        json={"name": "Sinov Operator", "login_url": "https://b2b.sinov.uz/login"},
+    )
+    assert created.status_code == 201, created.text
+    operator_id = created.json()["id"]
+
+    saved = await client.put(
+        f"/api/operators/{operator_id}/account",
+        headers=auth_headers,
+        json={"login": "agent@sinov.uz", "password": "parol-123"},
+    )
+    assert saved.status_code == 200, saved.text
+    return operator_id
+
+
+async def test_login_test_muvaffaqiyatli(client: AsyncClient, auth_headers, monkeypatch):
+    operator_id = await _operator_bilan_hisob(client, auth_headers)
+    _soxta_brauzer(monkeypatch, natija=ConnectorStatus.OK)
+
+    response = await client.post(
+        f"/api/operators/{operator_id}/login-test", headers=auth_headers
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["ok"] is True
+    assert body["status"] == "ishlayapti"
+    assert body["account"]["last_ok_at"]
+    # Seans saqlanishi kerak — keyingi safar login formasi ochilmaydi.
+    assert body["account"]["has_session"] is True
+
+
+async def test_login_test_parol_xato(client: AsyncClient, auth_headers, monkeypatch):
+    operator_id = await _operator_bilan_hisob(client, auth_headers)
+    _soxta_brauzer(monkeypatch, natija=ConnectorStatus.AUTH_FAILED)
+
+    body = (
+        await client.post(
+            f"/api/operators/{operator_id}/login-test", headers=auth_headers
+        )
+    ).json()
+    assert body["ok"] is False
+    assert body["status"] == "parol_xato"
+    assert body["account"]["has_session"] is False
+
+
+async def test_login_test_captcha_alohida_holat(
+    client: AsyncClient, auth_headers, monkeypatch
+):
+    """Captcha parol xatosidan AJRATILISHI kerak.
+
+    Aks holda agent to'g'ri parolini qayta-qayta terib ovora bo'lardi.
+    """
+    operator_id = await _operator_bilan_hisob(client, auth_headers)
+    _soxta_brauzer(monkeypatch, natija=ConnectorStatus.CAPTCHA)
+
+    body = (
+        await client.post(
+            f"/api/operators/{operator_id}/login-test", headers=auth_headers
+        )
+    ).json()
+    assert body["status"] == "captcha_kerak"
+    assert "captcha" in body["message"].lower()
+
+
+async def test_login_test_brauzer_yoq_bolsa_503(
+    client: AsyncClient, auth_headers, monkeypatch
+):
+    """Brauzer o'rnatilmagani — sozlash muammosi, parol xatosi EMAS.
+
+    Hisob holati "parol_xato" deb belgilansa, agent aybsiz parolini
+    almashtirib yurardi.
+    """
+    from app.services.browser_runner import BrowserUnavailable
+
+    operator_id = await _operator_bilan_hisob(client, auth_headers)
+    _soxta_brauzer(monkeypatch, xato=BrowserUnavailable("brauzer yo'q"))
+
+    response = await client.post(
+        f"/api/operators/{operator_id}/login-test", headers=auth_headers
+    )
+    assert response.status_code == 503
+
+    listing = (await client.get("/api/operators", headers=auth_headers)).json()
+    operator = next(o for o in listing if o["id"] == operator_id)
+    assert operator["account"]["status"] == "yangi", "holat buzilmasligi kerak"
+
+
+async def test_login_test_hisobsiz_operator_rad_etiladi(
+    client: AsyncClient, auth_headers
+):
+    created = await client.post(
+        "/api/operators",
+        headers=auth_headers,
+        json={"name": "Parolsiz", "login_url": "https://b2b.parolsiz.uz"},
+    )
+    operator_id = created.json()["id"]
+
+    response = await client.post(
+        f"/api/operators/{operator_id}/login-test", headers=auth_headers
+    )
+    assert response.status_code == 400
+
+
+async def test_login_test_kabinet_manzilisiz_rad_etiladi(
+    client: AsyncClient, auth_headers
+):
+    """Manzilsiz kirib bo'lmaydi — xato aniq aytilsin."""
+    created = await client.post(
+        "/api/operators", headers=auth_headers, json={"name": "Manzilsiz"}
+    )
+    operator_id = created.json()["id"]
+    await client.put(
+        f"/api/operators/{operator_id}/account",
+        headers=auth_headers,
+        json={"login": "a@b.uz", "password": "p"},
+    )
+
+    response = await client.post(
+        f"/api/operators/{operator_id}/login-test", headers=auth_headers
+    )
+    assert response.status_code == 400
+    assert "manzil" in response.json()["detail"].lower()
+
+
+async def test_login_test_begona_operatorga_ishlamaydi(
+    client: AsyncClient, auth_headers, monkeypatch
+):
+    """ENG MUHIMI: boshqa turagentning kabinetiga kirib bo'lmasligi kerak."""
+    boshqa = await _make_second_agent(client)
+    operator_id = await _operator_bilan_hisob(client, boshqa)
+    _soxta_brauzer(monkeypatch, natija=ConnectorStatus.OK)
+
+    response = await client.post(
+        f"/api/operators/{operator_id}/login-test", headers=auth_headers
+    )
+    assert response.status_code in (400, 403, 404)

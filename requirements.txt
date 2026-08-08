@@ -28,3 +28,8 @@ pypdf==5.1.0
 scikit-learn==1.6.1
 numpy==2.2.3
 slowapi==0.1.9
+
+# Operator kabinetlariga kirish uchun (`browser_runner`). Import kechiktirilgan:
+# brauzer o'rnatilmagan bo'lsa ilova ishlashda davom etadi, faqat kabinetga
+# kirish endpointi 503 qaytaradi. Brauzerning o'zi Dockerfile'da o'rnatiladi.
+playwright==1.49.1

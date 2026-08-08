@@ -11,6 +11,13 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Operator kabinetlariga kirish uchun brauzer (`browser_runner`).
+# FAQAT chromium — uchala brauzer obrazni behuda kattalashtiradi.
+# `--with-deps` kerakli tizim kutubxonalarini ham o'rnatadi; ularsiz
+# Chromium slim obrazda umuman ishga tushmaydi.
+RUN python -m playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy source code
 COPY . .
 
