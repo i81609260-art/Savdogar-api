@@ -19,6 +19,7 @@ from app.routers import (
     admin,
     auth,
     bookings,
+    booking_messages,
     crm,
     integrations,
     notifications,
@@ -274,6 +275,8 @@ app.mount("/uploads", StaticFiles(directory=upload_path), name="uploads")
 app.include_router(auth.router)
 app.include_router(tours.router)
 app.include_router(bookings.router)
+# Bron ichidagi mijoz ↔ agentlik yozishuvi.
+app.include_router(booking_messages.router)
 app.include_router(crm.router)
 app.include_router(requests_router.router)
 app.include_router(reports.router)

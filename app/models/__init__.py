@@ -2,6 +2,7 @@
 
 from app.models.assistant_example import AssistantExample
 from app.models.booking import Booking, BookingStatus
+from app.models.booking_message import BookingMessage, MessageSender
 from app.models.guest_review import GuestReview
 from app.models.integration import (
     ExternalTourMapping,
@@ -37,6 +38,8 @@ __all__ = [
     "AssistantExample",
     "Booking",
     "BookingStatus",
+    "BookingMessage",
+    "MessageSender",
     "GuestReview",
     "ExternalTourMapping",
     "IntegrationConfig",

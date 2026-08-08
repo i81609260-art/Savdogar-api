@@ -63,6 +63,19 @@ class Company(Base):
     website_customization: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # Whether a public website should be generated/shown for this company.
     site_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=True)
+    # Tavsiya tizimida (Tella psixologik profil bo'yicha tanlaganda) shu
+    # firmaning turlari chiqishiga rozilik.
+    #
+    # Sukut bo'yicha O'CHIQ — bu ataylab. Hech bir firma so'ralmasdan
+    # boshqa mijozlarga tavsiya qilinadigan ro'yxatga tushib qolmasin.
+    # Superadmin panelidan yoqiladi.
+    #
+    # `nullable=False` ham ataylab: bu yerda `None` "bilmayman" degani
+    # bo'lardi va tekshiruvlarda `if company.recommender_enabled` jimgina
+    # `False` kabi ishlab, keyin chalkashlik tug'dirardi.
+    recommender_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="0"
+    )
     # Subscription plan key: boshlangich | biznes | premium (see services/tariff.py).
     tariff: Mapped[str] = mapped_column(String(30), default="boshlangich", nullable=True)
     # Obuna qaysi sanagacha to'langan. Bo'sh bo'lsa — created_at asosida

@@ -175,11 +175,19 @@ class BookingService:
             )
 
         if self.notifier.sio:
+            payload = {"booking_id": booking.id, "status": data.status.value}
+            # Agentlik paneli — ro'yxat darrov yangilanadi.
             await self.notifier.sio.emit(
-                "booking_updated",
-                {"booking_id": booking.id, "status": data.status.value},
-                room=f"company_{booking.company_id}",
+                "booking_updated", payload, room=f"company_{booking.company_id}"
             )
+            # MIJOZ tomoni. Ilgari bu yo'q edi: admin tasdiqlaganda o'zgarish
+            # faqat agentlikka borardi, mijoz esa sahifani qo'lda yangilamaguncha
+            # hamon "kutilmoqda" ni ko'rib turardi. Xona allaqachon mavjud —
+            # `notification_service` o'sha nomdagi xonaga yozadi.
+            if booking.user_id:
+                await self.notifier.sio.emit(
+                    "booking_updated", payload, room=f"user_{booking.user_id}"
+                )
 
         # Send status update email (background)
         if booking_user:

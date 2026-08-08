@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.middleware.role_guard import role_required
-from app.models.company import CompanyStatus
+from app.models.company import Company, CompanyStatus
 from app.models.user import User, UserRole
 from app.schemas.auth import SuperAdminUserResponse, UserResponse
 from app.schemas.company import CompanyDetailResponse, CompanyRejectRequest, CompanyResponse
@@ -321,3 +321,30 @@ async def platform_overview(
     """Butun platforma bo'yicha real metrikalar va trend qatori."""
     service = ReportsService(db)
     return await service.overview(company_id=None, range_key=range)
+
+
+@router.patch(
+    "/companies/{company_id}/recommender",
+    summary="Tavsiya tizimiga rozilikni yoqish/o'chirish",
+    dependencies=[Depends(role_required(UserRole.SUPERADMIN))],
+)
+async def toggle_company_recommender(
+    company_id: int,
+    enabled: bool,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Firma turlari Tella tavsiyalarida chiqishini boshqaradi.
+
+    Bayroq FAQAT shu yerdan o'zgaradi. Firma admini o'zini o'zi tavsiya
+    ro'yxatiga qo'sha olmaydi — bu boshqa firmalarning mijozlariga
+    ko'rinadigan joy, shuning uchun qaror platforma darajasida qabul
+    qilinadi.
+    """
+    result = await db.execute(select(Company).where(Company.id == company_id))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Firma topilmadi")
+
+    company.recommender_enabled = enabled
+    await db.flush()
+    return {"company_id": company.id, "recommender_enabled": company.recommender_enabled}

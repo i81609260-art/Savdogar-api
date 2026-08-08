@@ -48,6 +48,15 @@ _load_all_models()
 SCHEMA_PATCHES: list[str] = [
 # Konnektor retsepti — jadval yaratilgandan keyin qo'shilgan ustun.
 "ALTER TABLE tour_operators ADD COLUMN connector_config TEXT",
+# Tavsiya tizimiga rozilik. Mavjud firmalarga O'CHIQ holda qo'shiladi —
+# hech kim so'ralmasdan tavsiya ro'yxatiga tushib qolmasin.
+#
+# `DEFAULT FALSE`, `DEFAULT 0` EMAS. Postgres BOOLEAN ustunga butun sonni
+# qabul qilmaydi: "column is of type boolean but default expression is of
+# type integer". Xato quyidagi `try/except` da yutilardi, ustun esa mavjud
+# bazada umuman qo'shilmay qolardi — sinovlar SQLite'da o'tavergani uchun
+# buni faqat ishlab chiqarishda sezgan bo'lardik.
+"ALTER TABLE companies ADD COLUMN recommender_enabled BOOLEAN DEFAULT FALSE NOT NULL",
 "ALTER TABLE companies ADD COLUMN sair_integrated BOOLEAN DEFAULT 0",
 "ALTER TABLE users ADD COLUMN telegram_chat_id VARCHAR(50)",
 "ALTER TABLE users ADD COLUMN click_merchant_id VARCHAR(100)",
