@@ -32,6 +32,11 @@ CBU_URL = "https://cbu.uz/uz/arkhiv-kursov-valyut/json/"
 # ortiqcha so'rov qilinmaydi.
 _TTL_SECONDS = 6 * 60 * 60
 
+# Kunlik halqaning kutish oralig'i. Alohida doimiy — sinovda uni
+# almashtirish `asyncio.sleep` ni yamoqlashdan xavfsizroq: u global
+# modul va yamoqlansa sinovning o'zi ham ta'sirlanardi.
+_DAILY_SLEEP_SECONDS = 24 * 60 * 60
+
 # Oxirgi chora. FAQAT MB ham, kesh ham ishlamaganda qo'llanadi (masalan
 # server yangi ko'tarilgan va tarmoq yo'q). Aniq bo'lishi shart emas —
 # vazifasi tur saqlanishini to'xtatib qo'ymaslik. Sana: 2026-08.
@@ -97,6 +102,31 @@ async def refresh_rates(force: bool = False) -> dict[str, float]:
             log.warning("MB kurslari olinmadi (%s) — eski qiymatlar ishlatiladi", exc)
 
     return _cache or _FALLBACK
+
+
+async def daily_refresh_loop(recompute) -> None:
+    """Har kuni kursni yangilab, turlarning so'mdagi narxini qayta hisoblaydi.
+
+    `price_uzs` tur SAQLANGANDA hisoblanadi va keyin qotib qoladi. Kurs
+    o'zgarsa u eskiradi: 10-15% siljish saralash tartibini sezilarli
+    buzadi. Shuning uchun kuniga bir marta qayta hisoblanadi.
+
+    Alohida cron xizmati EMAS, ilova ichidagi vazifa: Railway'da alohida
+    rejalashtiruvchi qo'shish uchun yana bitta xizmat va uning sozlamasi
+    kerak bo'lardi, bu esa bitta amal uchun ortiqcha.
+
+    Xato bo'lsa halqa TO'XTAMAYDI — bir kunlik uzilish tufayli keyingi
+    kunlar ham yangilanmay qolishi eng yomon natija bo'lardi.
+    """
+    while True:
+        try:
+            await refresh_rates(force=True)
+            await recompute()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Kunlik kurs yangilash xatosi: %s", exc)
+        await asyncio.sleep(_DAILY_SLEEP_SECONDS)
 
 
 def rate_for(currency: Optional[str]) -> float:

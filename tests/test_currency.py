@@ -157,3 +157,65 @@ def test_rate_for_tarmoqqa_chiqmaydi():
     cur._cache.update({"UZS": 1.0, "USD": 12_000.0})
     assert rate_for("usd") == 12_000.0, "katta-kichik harf farq qilmasin"
     assert rate_for(None) == 1.0
+
+
+# --------------------------------------------------------------------------
+# Kunlik yangilash halqasi
+# --------------------------------------------------------------------------
+async def test_kunlik_halqa_darrov_bir_marta_ishlaydi(monkeypatch):
+    """Halqa birinchi aylanishni KUTMASDAN bajaradi.
+
+    Aks holda server qayta ishga tushgach kurs 24 soat davomida
+    yangilanmay turardi.
+    """
+    import asyncio
+
+    chaqirildi = {"refresh": 0, "recompute": 0}
+
+    async def _refresh(force=False):
+        chaqirildi["refresh"] += 1
+        return {"UZS": 1.0}
+
+    async def _recompute():
+        chaqirildi["recompute"] += 1
+
+    monkeypatch.setattr(cur, "refresh_rates", _refresh)
+
+    task = asyncio.create_task(cur.daily_refresh_loop(_recompute))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    assert chaqirildi["refresh"] == 1
+    assert chaqirildi["recompute"] == 1
+
+
+async def test_xato_halqani_toxtatmaydi(monkeypatch):
+    """Bir kunlik uzilish keyingi kunlarni ham to'xtatib qo'ymasligi kerak."""
+    import asyncio
+
+    urinishlar = {"n": 0}
+
+    async def _refresh(force=False):
+        urinishlar["n"] += 1
+        raise RuntimeError("MB javob bermadi")
+
+    async def _recompute():
+        pass
+
+    monkeypatch.setattr(cur, "refresh_rates", _refresh)
+    # Kutishni qisqartiramiz, aks holda test 24 soat kutardi.
+    monkeypatch.setattr(cur, "_DAILY_SLEEP_SECONDS", 0)
+
+    task = asyncio.create_task(cur.daily_refresh_loop(_recompute))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    assert urinishlar["n"] > 1, "xatodan keyin ham qayta urinishi kerak"

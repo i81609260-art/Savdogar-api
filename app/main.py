@@ -1,5 +1,6 @@
 """Savdogar FastAPI — CRM/POS + SAIR integratsiya."""
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -14,6 +15,7 @@ from slowapi.errors import RateLimitExceeded
 from app.config import get_settings
 from app.database import Base, engine
 from app.db_schema import ensure_schema
+from app.services.currency import daily_refresh_loop
 from app.utils.limiter import limiter
 from app.routers import (
     admin,
@@ -120,7 +122,21 @@ async def lifespan(app: FastAPI):
     await migrate_call_audio_to_private()
     await backfill_price_uzs()
     await seed_superadmin()
+
+    # Kunlik kurs yangilash. `create_task` — bloklamasligi kerak, aks holda
+    # ilova ishga tushishi birinchi so'rovni kutib turardi.
+    rates_task = asyncio.create_task(daily_refresh_loop(recompute_all_price_uzs))
+
     yield
+
+    # Yopilishda vazifani to'xtatamiz, aks holda test va qayta ishga
+    # tushirishlarda "task was destroyed but it is pending" ogohlantirishi
+    # chiqar va halqa fon rejimida qolib ketardi.
+    rates_task.cancel()
+    try:
+        await rates_task
+    except asyncio.CancelledError:
+        pass
 
 
 async def backfill_price_uzs():
@@ -160,6 +176,35 @@ async def backfill_price_uzs():
             log.info("price_uzs to'ldirildi: %s ta tur", len(rows))
     except Exception as exc:  # noqa: BLE001
         log.warning("price_uzs to'ldirilmadi: %s", exc)
+
+
+async def recompute_all_price_uzs():
+    """HAMMA turning so'mdagi narxini joriy kurs bo'yicha qayta hisoblaydi.
+
+    `backfill_price_uzs` dan farqi: u faqat NULL bo'lganlarni to'ldiradi
+    (bir martalik tuzatuv), bu esa hammasini yangilaydi — kurs o'zgargani
+    uchun eski qiymatlar eskirgan bo'ladi.
+
+    Model tinglovchisi (`models/tour.py`) qiymatni o'zi hisoblaydi,
+    shuning uchun bu yerda faqat "tegib qo'yish" kifoya.
+    """
+    from sqlalchemy import select as _select
+
+    from app.database import AsyncSessionLocal
+    from app.models.tour import Tour
+
+    log = logging.getLogger(__name__)
+    async with AsyncSessionLocal() as session:
+        tours = (await session.execute(_select(Tour))).scalars().all()
+        for tour in tours:
+            # Tinglovchi `before_update` da ishlaydi, lekin SQLAlchemy
+            # o'zgarmagan obyektni yozmaydi. Shuning uchun maydonni ochiq
+            # qayta hisoblaymiz.
+            from app.services.currency import to_uzs
+
+            tour.price_uzs = to_uzs(tour.price, tour.currency)
+        await session.commit()
+        log.info("price_uzs qayta hisoblandi: %s ta tur", len(tours))
 
 
 async def migrate_call_audio_to_private():
