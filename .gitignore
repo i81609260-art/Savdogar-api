@@ -4,6 +4,11 @@ __pycache__/
 venv/
 .env
 *.db
+# SQLite yordamchi fayllari — sinovlar ishlayotganda paydo bo'ladi.
+# `*.db` ularni QAMRAMAYDI, chunki kengaytmasi boshqacha.
+*.db-journal
+*.db-wal
+*.db-shm
 uploads/
 private/
 .pytest_cache/

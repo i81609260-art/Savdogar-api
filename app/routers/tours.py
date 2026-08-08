@@ -31,6 +31,10 @@ async def list_tours(
     min_slots: Optional[int] = None,
     search: Optional[str] = None,
     company_id: Optional[int] = None,
+    sort: Optional[str] = Query(
+        None,
+        description="narx_arzon | narx_qimmat | sana | yangi (sukut)",
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> PaginatedResponse[TourResponse]:
     """Public tour catalog with filters."""
@@ -45,7 +49,35 @@ async def list_tours(
         min_slots=min_slots,
         search=search,
         company_id=company_id,
+        sort=sort,
     )
+
+
+@router.get("/cities", summary="Yo'nalishlar ro'yxati")
+async def list_cities(db: AsyncSession = Depends(get_db)) -> list[dict]:
+    """Turlari BOR shaharlar, har birida nechta tur borligi bilan.
+
+    Ro'yxat statik taksonomiyadan emas, haqiqiy turlardan olinadi. Sababi
+    amaliy: taksonomiyada 42 ta kurort bor, lekin ularning ko'pida bugun
+    birorta ham tur yo'q. Bunday joyni taklif qilish foydalanuvchini bo'sh
+    natijaga olib borardi — qidiruvdagi eng asabiylashtiradigan holat.
+
+    Bu endpoint `/{tour_id}` dan OLDIN turishi SHART: aks holda "cities"
+    tur raqami deb o'qilib 422 qaytarardi.
+    """
+    from sqlalchemy import func, select
+
+    from app.models.tour import Tour
+
+    rows = (
+        await db.execute(
+            select(Tour.city, func.count(Tour.id).label("soni"))
+            .where(Tour.is_active == True)  # noqa: E712
+            .group_by(Tour.city)
+            .order_by(func.count(Tour.id).desc())
+        )
+    ).all()
+    return [{"city": r[0], "count": r[1]} for r in rows if r[0]]
 
 
 @router.get("/top", response_model=list[TourResponse], summary="Eng yaxshi turlar")

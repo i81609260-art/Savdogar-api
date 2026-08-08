@@ -63,6 +63,7 @@ class TourService:
         min_slots: Optional[int] = None,
         search: Optional[str] = None,
         company_id: Optional[int] = None,
+        sort: Optional[str] = None,
         active_only: bool = True,
         scope_branch_id: Optional[int] = None,
         branch_filter: Optional[int] = None,
@@ -111,7 +112,17 @@ class TourService:
         count_query = select(func.count()).select_from(query.subquery())
         total = (await self.db.execute(count_query)).scalar() or 0
 
-        query = query.order_by(Tour.created_at.desc())
+        # Saralash. Sukut bo'yicha yangi qo'shilgani birinchi — bu katalog
+        # uchun mantiqiy, lekin mijoz ARZONIDAN qidiradi, shuning uchun
+        # tanlov kerak. Noma'lum qiymat jimgina sukutga tushadi: xato
+        # so'rov butun sahifani yiqitmasligi kerak.
+        order = {
+            "narx_arzon": Tour.price.asc(),
+            "narx_qimmat": Tour.price.desc(),
+            "sana": Tour.start_date.asc().nulls_last(),
+            "yangi": Tour.created_at.desc(),
+        }.get(sort or "", Tour.created_at.desc())
+        query = query.order_by(order)
         query = query.offset((page - 1) * page_size).limit(page_size)
         result = await self.db.execute(query)
         tours = result.scalars().all()
