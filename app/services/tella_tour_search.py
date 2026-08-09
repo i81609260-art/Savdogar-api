@@ -334,9 +334,18 @@ def extract_query(text: str) -> TourSearchQuery:
         raw_text=(text or "").strip(),
     )
 
-    # Byudjet bor, valyuta yo'q — bu bozorda standart USD.
+    # Byudjet bor, valyuta yo'q — kattaligidan xulosa qilamiz.
+    #
+    # Operator prays-listlarida narx USD'da, mijoz esa so'mda o'ylaydi
+    # ("15 mln"). Doim USD deb olinganda "15 mln" 178 mlrd so'mga
+    # aylanardi va byudjet filtri jimgina ishlamay qolardi.
+    #
+    # Chegara — 100 000: paket tur uchun 100 000 dollar ham,
+    # 100 000 so'm ham (~8$) real byudjet emas, shuning uchun oraliqda
+    # chalkashlik yo'q.
     if (query.budget_max or query.budget_min) and not query.currency:
-        query.currency = "USD"
+        eng_katta = max(query.budget_max or 0, query.budget_min or 0)
+        query.currency = "UZS" if eng_katta >= 100_000 else "USD"
         query.inferred.add("currency")
 
     return query

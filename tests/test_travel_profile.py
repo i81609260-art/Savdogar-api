@@ -196,3 +196,33 @@ def test_sabablar_mijoz_tilida():
     ru = explain(pref, "ru")
     assert uz and ru
     assert uz != ru, "tarjima qilinmagan"
+
+
+# ── Byudjet valyutasi ────────────────────────────────────────────────
+
+
+def test_millionli_byudjet_somda_oqiladi():
+    """Mijoz "15 mln" desa bu so'm; USD deb olinsa filtr ishlamay qolardi."""
+    from app.services.tella_tour_search import extract_query
+
+    q = extract_query("15 mln gacha")
+    assert q.budget_max == 15_000_000
+    assert q.currency == "UZS"
+
+
+def test_kichik_byudjet_dollarda_qoladi():
+    """Operator prays-listlarida narx USD'da — 800 bu 800 dollar."""
+    from app.services.tella_tour_search import extract_query
+
+    q = extract_query("800 gacha")
+    assert q.budget_max == 800
+    assert q.currency == "USD"
+
+
+def test_korsatilgan_valyuta_ustun():
+    from app.services.tella_tour_search import extract_query
+
+    q = extract_query("2000 dollargacha")
+    assert q.currency == "USD"
+    q = extract_query("15 mln so'mgacha")
+    assert q.currency == "UZS"
