@@ -36,7 +36,7 @@ from app.services.currency import to_uzs
 from app.services.tella_tour_search import (
     TourSearchQuery,
     extract_query,
-    next_question,
+    missing_slots,
 )
 from app.services.travel_profile import (
     DIMENSIONS,
@@ -444,6 +444,87 @@ _REPLY: dict[str, dict[str, str]] = {
 }
 
 
+# Mijozga beriladigan savol. `tella_tour_search.SLOT_QUESTIONS` dan
+# alohida turadi: u AGENT paneli uchun va faqat o'zbekcha, bu esa mijoz
+# uchun va uch tilda.
+_SLOT_QUESTION: dict[str, dict[str, str]] = {
+    "destinations": {
+        "uz": "Qaysi yo'nalish? (masalan: Antalya, Dubay, Umra)",
+        "ru": "Какое направление? (например: Анталия, Дубай, Умра)",
+        "en": "Which destination? (e.g. Antalya, Dubai, Umrah)",
+    },
+    "nights": {
+        "uz": "Necha kecha?",
+        "ru": "Сколько ночей?",
+        "en": "How many nights?",
+    },
+    "adults": {
+        "uz": "Necha kishi?",
+        "ru": "Сколько человек?",
+        "en": "How many people?",
+    },
+    "date_from": {
+        "uz": "Qachon? (sana yoki oy)",
+        "ru": "Когда? (дата или месяц)",
+        "en": "When? (date or month)",
+    },
+}
+
+_CATEGORY_LABEL: dict[str, dict[str, str]] = {
+    "plyaj": {"uz": "dengiz bo'yida dam olish", "ru": "пляжный отдых",
+              "en": "beach holiday"},
+    "ekskursiya": {"uz": "ekskursiya", "ru": "экскурсии", "en": "sightseeing"},
+    "umra": {"uz": "umra", "ru": "умра", "en": "Umrah"},
+    "haj": {"uz": "haj", "ru": "хадж", "en": "Hajj"},
+    "davolanish": {"uz": "davolanish", "ru": "лечение", "en": "treatment"},
+    "changi": {"uz": "changi", "ru": "горные лыжи", "en": "skiing"},
+    "shop": {"uz": "shop-tur", "ru": "шоп-тур", "en": "shopping"},
+    "asal_oyi": {"uz": "asal oyi", "ru": "медовый месяц", "en": "honeymoon"},
+    "biznes": {"uz": "biznes", "ru": "бизнес", "en": "business"},
+    "talim": {"uz": "ta'lim", "ru": "обучение", "en": "education"},
+    "kruiz": {"uz": "kruiz", "ru": "круиз", "en": "cruise"},
+}
+
+_UNIT: dict[str, dict[str, str]] = {
+    "uz": {"pax": "kishi", "nights": "kecha", "upto": "gacha"},
+    "ru": {"pax": "чел.", "nights": "ночей", "upto": "до"},
+    "en": {"pax": "people", "nights": "nights", "upto": "up to"},
+}
+
+
+def _summarize(query: TourSearchQuery, til: str) -> str:
+    """Mijoz nima aytganini uning tilida takrorlaydi.
+
+    `tella_tour_search.summarize` ISHLATILMAYDI — u agent paneli uchun
+    yozilgan va doim o'zbekcha, ruscha suhbatda "Понял: Plyaj / dam
+    olish" kabi aralash matn chiqarardi.
+    """
+    u = _UNIT.get(til, _UNIT["uz"])
+    qismlar: list[str] = []
+
+    nomlar = [d.name_uz for d in query.destinations if not d.is_country]
+    if not nomlar:
+        nomlar = [d.name_uz for d in query.destinations]
+    if nomlar:
+        qismlar.append(", ".join(nomlar[:3]))
+
+    if query.category is not None:
+        yorliq = _CATEGORY_LABEL.get(query.category.value)
+        if yorliq:
+            qismlar.append(yorliq.get(til, yorliq["uz"]))
+
+    if query.nights:
+        qismlar.append(f"{query.nights} {u['nights']}")
+    if query.adults:
+        qismlar.append(f"{query.adults} {u['pax']}")
+    if query.budget_max:
+        pul = f"{query.budget_max:,.0f} {query.currency or ''}".strip()
+        qismlar.append(
+            f"{u['upto']} {pul}" if til != "uz" else f"{pul} {u['upto']}"
+        )
+    return " · ".join(qismlar)
+
+
 def compose_reply(
     message: str,
     query: Optional[TourSearchQuery],
@@ -463,9 +544,7 @@ def compose_reply(
     qismlar: list[str] = []
 
     if query is not None:
-        from app.services.tella_tour_search import summarize
-
-        xulosa = summarize(query)
+        xulosa = _summarize(query, til)
         if xulosa:
             qismlar.append(m["tushundim"].format(xulosa=xulosa))
 
@@ -482,8 +561,10 @@ def compose_reply(
     # Yetishmayotgan ma'lumot bo'lsa bittasini so'raymiz. Bir vaqtda
     # bir nechta savol berish suhbatni so'roqqa aylantiradi.
     if query is not None:
-        savol = next_question(query)
-        if savol:
-            qismlar.append(savol)
+        for slot in missing_slots(query):
+            savol = _SLOT_QUESTION.get(slot)
+            if savol:
+                qismlar.append(savol.get(til, savol["uz"]))
+            break
 
     return " ".join(qismlar)

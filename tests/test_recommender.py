@@ -359,3 +359,37 @@ def test_mijoz_aytgan_toifa_anketadan_ustun():
     natija = recommender.rank([ekskursiya, plyaj], pref, q)
     assert natija[0].tour.id == 1, "arzonroq ekskursiya plyajni bosib ketdi"
     assert "aytgan_toifa" in natija[0].matched
+
+
+# ── Suhbat javobi tili ───────────────────────────────────────────────
+
+
+def test_suhbat_javobi_toliq_tarjima_qilinadi():
+    """Ruscha suhbatda o'zbekcha savol turmasin.
+
+    Ilgari javob `tella_tour_search.summarize` va `next_question` dan
+    yig'ilardi — ular agent paneli uchun va faqat o'zbekcha. Natijada
+    ruscha javob "Понял: Plyaj / dam olish … Qaysi yo'nalish?" ko'rinishda
+    chiqardi.
+    """
+    q = recommender.extract_query("10 mln gacha dengizga 2 kishi")
+
+    ru = recommender.compose_reply("x", q, [], 5, 0, "ru")
+    assert "пляжный отдых" in ru
+    assert "Какое направление" in ru
+    assert "Qaysi" not in ru
+    assert "Plyaj" not in ru
+
+    en = recommender.compose_reply("x", q, [], 5, 0, "en")
+    assert "beach holiday" in en
+    assert "Which destination" in en
+    assert "Qaysi" not in en
+
+    uz = recommender.compose_reply("x", q, [], 5, 0, "uz")
+    assert "Qaysi yo'nalish" in uz
+
+
+def test_notanish_til_ozbekchaga_tushadi_suhbatda():
+    q = recommender.extract_query("dengizga")
+    fr = recommender.compose_reply("x", q, [], 1, 0, "fr")
+    assert fr == recommender.compose_reply("x", q, [], 1, 0, "uz")
