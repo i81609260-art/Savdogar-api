@@ -18,6 +18,7 @@ from app.models.company_telegram_bot import CompanyTelegramBot
 from app.models.instagram import InstagramAccount, InstagramThread
 from app.models.membership_booking import MembershipBooking
 from app.models.notification import Notification
+from app.models.recommendation_event import RecommendationEvent
 from app.models.site_visit import SiteVisit
 from app.models.tour import Tour
 from app.models.tour_group import TourGroup
@@ -57,6 +58,7 @@ __all__ = [
     "InstagramThread",
     "MembershipBooking",
     "Notification",
+    "RecommendationEvent",
     "SiteVisit",
     "Tour",
     "TourGroup",

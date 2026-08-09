@@ -4,6 +4,7 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -215,3 +216,53 @@ async def get_website_customization(
             pass
 
     return {"customization": customization}
+
+
+class RecommenderToggle(BaseModel):
+    enabled: bool
+
+
+@router.get("/recommender", summary="Tavsiyaga qo'shilish holati")
+async def get_recommender_state(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Firma tavsiyalovchida qatnashayaptimi."""
+    if not current_user.company_id:
+        raise HTTPException(status_code=400, detail="Company yo'q")
+    company = (
+        await db.execute(
+            select(Company).where(Company.id == current_user.company_id)
+        )
+    ).scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company topilmadi")
+    return {"enabled": bool(company.recommender_enabled)}
+
+
+@router.patch("/recommender", summary="Tavsiyaga qo'shilish")
+async def set_recommender_state(
+    data: RecommenderToggle,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Firma o'z turlarini tavsiyalovchiga qo'shadi yoki chiqaradi.
+
+    Bu qaror AGENTLIKNIKI, superadminniki emas: o'z turlarini kimga
+    ko'rsatishni firma o'zi hal qiladi. Superadminda ham shunday tugma
+    bor, lekin u faqat suiiste'mol holatida ishlatiladi.
+
+    O'chirilganda turlar KATALOGDA qoladi — faqat tavsiyadan chiqadi.
+    """
+    if not current_user.company_id:
+        raise HTTPException(status_code=400, detail="Company yo'q")
+    company = (
+        await db.execute(
+            select(Company).where(Company.id == current_user.company_id)
+        )
+    ).scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company topilmadi")
+    company.recommender_enabled = data.enabled
+    await db.commit()
+    return {"enabled": company.recommender_enabled}

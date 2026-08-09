@@ -28,6 +28,7 @@ from app.routers import (
     notifications,
     payments,
     promo,
+    recommender,
     reports,
     superadmin,
     tours,
@@ -368,6 +369,7 @@ app.include_router(tours.router)
 app.include_router(bookings.router)
 # Bron ichidagi mijoz ↔ agentlik yozishuvi.
 app.include_router(booking_messages.router)
+app.include_router(recommender.router)
 # Brauzer kengaytmasi: kalitlar va narx qabul qilish.
 app.include_router(extension.router)
 app.include_router(crm.router)
