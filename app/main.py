@@ -351,7 +351,12 @@ app.add_middleware(
     allow_origin_regex=settings.cors_origin_regex,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    # `X-API-Key` — brauzer kengaytmasi narxni shu sarlavha bilan yuboradi.
+    # Kengaytmaning o'zi `host_permissions` tufayli CORS'dan istisno, ya'ni
+    # ro'yxatsiz ham ishlardi. Lekin bunday nozik bog'liqlikka tayanmaslik
+    # kerak: brauzer qoidalari o'zgarsa yoki endpoint boshqa joydan
+    # chaqirilsa, sababi topilishi qiyin xato bo'lardi.
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With", "X-API-Key"],
 )
 
 upload_path = settings.persistent_upload_dir
