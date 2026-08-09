@@ -380,9 +380,13 @@ async def recommend(
         profile=profile, learned=markazlar,
     )
 
-    for i, s in enumerate(tartibli[:log_shown]):
-        await log_event(db, profile, s.tour, "shown",
-                        user_id=user_id, position=i)
+    # Anketa to'ldirilmagan bo'lsa yozmaymiz: hamma o'lchami 0.5 bo'lgan
+    # profil hech nima o'rgatmaydi, jadvalni esa har sahifa ochilishida
+    # beshta qatorga to'ldiradi.
+    if profile.answered:
+        for i, s in enumerate(tartibli[:log_shown]):
+            await log_event(db, profile, s.tour, "shown",
+                            user_id=user_id, position=i)
 
     return {
         "profile": profile.to_dict(),

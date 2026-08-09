@@ -1,5 +1,18 @@
 """Pytest fixtures for SAYR API tests."""
 
+import os
+
+# Sinov bazasi ILOVA IMPORTIDAN OLDIN belgilanadi.
+#
+# `app.database` engine'ni import paytida quradi va ba'zi joylar
+# (`SubscriptionGuard`, `ActivityMiddleware`, socket ishlovchilari)
+# `AsyncSessionLocal` ni to'g'ridan-to'g'ri oladi — ular
+# `dependency_overrides` ni CHETLAB O'TADI. Shu sababli ular sinovda
+# ishlab turgan dasturchining lokal `savdogar.db` fayliga tegib ketardi:
+# u eski sxemada bo'lgani uchun to'plam tasodifiy joylarda
+# "no such column: users.branch_id" bilan yiqilardi.
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test_sayr.db"
+
 import asyncio
 from functools import lru_cache
 from typing import AsyncGenerator, Generator

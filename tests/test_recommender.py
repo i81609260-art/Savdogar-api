@@ -304,3 +304,36 @@ async def test_kirmagan_odam_ruxsatni_ozgartira_olmaydi(client: AsyncClient):
         "/api/admin/company/recommender", json={"enabled": True}
     )
     assert r.status_code in (401, 403)
+
+
+async def test_bosh_anketa_hodisa_yozmaydi(client: AsyncClient):
+    """Hamma o'lchami betaraf profil hech nima o'rgatmaydi."""
+    from sqlalchemy import func
+
+    from app.models.recommendation_event import RecommendationEvent
+
+    async with TestSessionLocal() as db:
+        firma = (
+            await db.execute(select(Company).where(Company.slug == "test-firma"))
+        ).scalar_one()
+        firma.recommender_enabled = True
+        db.add(Tour(
+            company_id=firma.id, title="Antalya plyaj",
+            description="Dengiz", city="Antalya", country="Turkiya",
+            price=12_000_000, duration_days=7, available_slots=10,
+        ))
+        await db.commit()
+
+    await client.post("/api/recommender", json={})
+    async with TestSessionLocal() as db:
+        soni = (
+            await db.execute(select(func.count(RecommendationEvent.id)))
+        ).scalar()
+    assert soni == 0
+
+    await client.post("/api/recommender", json={"answers": _TINCH})
+    async with TestSessionLocal() as db:
+        soni = (
+            await db.execute(select(func.count(RecommendationEvent.id)))
+        ).scalar()
+    assert soni > 0
