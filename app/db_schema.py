@@ -51,6 +51,9 @@ SCHEMA_PATCHES: list[str] = [
 # Saralash va narx filtri uchun so'mga o'girilgan narx. Mavjud turlarda
 # `NULL` bo'lib qoladi va startda bir marta to'ldiriladi (`backfill_price_uzs`).
 "ALTER TABLE tours ADD COLUMN price_uzs FLOAT",
+# Jo'nash shahri. Mavjud turlarda NULL qoladi va ko'rsatishda firmaning
+# shahri ishlatiladi.
+"ALTER TABLE tours ADD COLUMN departure_city VARCHAR(100)",
 # Tavsiya tizimiga rozilik. Mavjud firmalarga O'CHIQ holda qo'shiladi —
 # hech kim so'ralmasdan tavsiya ro'yxatiga tushib qolmasin.
 #

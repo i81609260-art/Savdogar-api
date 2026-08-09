@@ -40,6 +40,15 @@ class TourService:
             description=tour.description,
             city=tour.city,
             country=tour.country,
+            # Jo'nash shahri ko'rsatilmagan bo'lsa firmaning shahri olinadi:
+            # turlarning aksariyati agentlik joylashgan shahardan jo'naydi va
+            # uni har turda qayta yozdirish ortiqcha ish bo'lardi.
+            #
+            # Hisob SERVERDA qilinadi, mijozda emas — aks holda veb, mobil va
+            # bot uchta joyda takrorlanardi va biri unutilib qolardi.
+            departure_city=(
+                tour.departure_city or (company.city if company else None)
+            ),
             price=tour.price,
             currency=tour.currency or "UZS",
             duration_days=tour.duration_days,
@@ -183,6 +192,7 @@ class TourService:
             description=data.description,
             city=data.city,
             country=data.country,
+            departure_city=data.departure_city,
             price=data.price,
             currency=data.currency,
             duration_days=data.duration_days,

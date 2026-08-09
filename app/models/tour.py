@@ -23,7 +23,14 @@ class Tour(Base):
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
     title: Mapped[str] = mapped_column(String(255), index=True)
     description: Mapped[str] = mapped_column(Text)
+    # Borish joyi.
     city: Mapped[str] = mapped_column(String(100), index=True)
+    # Jo'nash shahri. Bo'sh bo'lsa firmaning shahri olinadi — turlarning
+    # aksariyati agentlik joylashgan shahardan jo'naydi, shuning uchun uni
+    # har turda qayta yozdirish ortiqcha ish bo'lardi.
+    departure_city: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True
+    )
     country: Mapped[str] = mapped_column(String(100), default="Uzbekistan")
     price: Mapped[float] = mapped_column(Float)
     currency: Mapped[str] = mapped_column(String(10), default="UZS")
