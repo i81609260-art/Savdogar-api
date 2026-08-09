@@ -192,6 +192,7 @@ class Settings(BaseSettings):
         r"^https://([a-z0-9-]+\.)*turify\.xyz$"
         r"|^https://[a-z0-9-]+\.vercel\.app$"
         r"|^http://localhost:\d+$"
+        r"|^http://127\.0\.0\.1:\d+$"
     )
 
     @property

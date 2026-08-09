@@ -337,3 +337,25 @@ async def test_bosh_anketa_hodisa_yozmaydi(client: AsyncClient):
             await db.execute(select(func.count(RecommendationEvent.id)))
         ).scalar()
     assert soni > 0
+
+
+def test_mijoz_aytgan_toifa_anketadan_ustun():
+    """"Dengizga" degan odamga ekskursiya tavsiya qilinmasin.
+
+    Anketa odamning ODATINI taxmin qiladi, matn esa hozirgi ANIQ niyati.
+    """
+    # Anketa betaraf: ikkala toifa ham mezonda.
+    pref = to_preference(score({}))
+    plyaj = _tur(id=1, title="Antalya plyaj dam olishi",
+                 description="Dengiz bo'yida", price=12_500_000,
+                 price_uzs=12_500_000)
+    ekskursiya = _tur(id=2, title="Dubay shahar ekskursiyasi",
+                      description="Burj Khalifa, sahro safari",
+                      city="Dubay", country="BAA",
+                      price=9_800_000, price_uzs=9_800_000)
+    q = recommender.extract_query("10 mln gacha dengizga")
+    assert q.category is not None, "matndan toifa ajratilmadi"
+
+    natija = recommender.rank([ekskursiya, plyaj], pref, q)
+    assert natija[0].tour.id == 1, "arzonroq ekskursiya plyajni bosib ketdi"
+    assert "aytgan_toifa" in natija[0].matched

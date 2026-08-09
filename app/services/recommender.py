@@ -54,6 +54,7 @@ W_CATEGORY_OTHER = 22.0     # qolgan toifalar
 W_BOOKING_TYPE = 15.0
 W_DURATION = 12.0
 W_DESTINATION = 35.0        # mijoz nomini AYTGAN yo'nalish
+W_CATEGORY_SAID = 45.0      # mijoz AYTGAN toifa ("dengizga")
 W_BUDGET = 25.0
 W_DEPARTURE = 18.0          # o'z shahridan jo'naydi
 W_POPULAR = 6.0
@@ -180,6 +181,13 @@ def rank(
             sabab.append("davomiylik")
 
         if query is not None:
+            # Mijoz toifani O'ZI aytgan bo'lsa ("dengizga", "umraga") u
+            # anketadan ustun turadi: anketa odamning odatini taxmin
+            # qiladi, bu esa hozirgi aniq niyati.
+            if query.category is not None and toifa == query.category:
+                ball += W_CATEGORY_SAID
+                sabab.append("aytgan_toifa")
+
             shahar_n = tour_taxonomy.normalize(t.city or "")
             if shahar_n and shahar_n in shaharlar:
                 ball += W_DESTINATION
