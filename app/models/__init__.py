@@ -13,6 +13,7 @@ from app.models.integration import (
     PosSaleNotification,
 )
 from app.models.company import Company, CompanyStatus, CompanyType
+from app.models.extension_key import ExtensionKey
 from app.models.company_telegram_bot import CompanyTelegramBot
 from app.models.instagram import InstagramAccount, InstagramThread
 from app.models.membership_booking import MembershipBooking
@@ -51,6 +52,7 @@ __all__ = [
     "CompanyStatus",
     "CompanyType",
     "CompanyTelegramBot",
+    "ExtensionKey",
     "InstagramAccount",
     "InstagramThread",
     "MembershipBooking",
