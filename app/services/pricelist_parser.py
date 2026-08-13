@@ -137,6 +137,15 @@ _CURRENCY_WORDS = "|".join(
 # `(?!\w)` — "500 summa" ichidagi "sum" ni valyuta deb o'qimasin.
 _CURRENCY_IN_PRICE = re.compile(rf"({_CURRENCY_WORDS})(?!\w)", re.I)
 
+# Mingliklar ajratgichi bo'la oladigan bo'sh joy.
+#
+# TAB VA YANGI QATOR ATAYLAB KIRMAYDI: jadvalda ular USTUNLARNI
+# ajratadi. `\s` ishlatilganda brauzerdan olingan "7<TAB>890 USD"
+# (7 kecha, 890 dollar) bitta son — 7890 — bo'lib o'qilardi va agent
+# narxni to'qqiz barobar oshirib qo'yardi.
+_SEP_CHARS = " \u00a0\u202f"
+_SEP = rf"[{_SEP_CHARS}]"
+
 
 def parse_price(value: Any) -> tuple[Optional[float], Optional[str]]:
     """Narxni va valyutani ajratadi.
@@ -161,9 +170,18 @@ def parse_price(value: Any) -> tuple[Optional[float], Optional[str]]:
         if found:
             currency = match_currency(found.group(1))
 
+    # Tab yoki yangi qator — USTUN chegarasi. Ular qolsa qo'shni
+    # ustundagi son narxga yopishib ketardi ("7<TAB>890" -> 7890).
+    # Valyuta qaysi bo'lakda bo'lsa, narx ham o'sha yerda.
+    if "\t" in text or "\n" in text:
+        boklar = [b for b in re.split(r"[\t\n]+", text) if re.search(r"\d", b)]
+        if boklar:
+            valyutali = [b for b in boklar if _CURRENCY_IN_PRICE.search(b)]
+            text = (valyutali or boklar)[-1].strip()
+
     # Faqat raqam va ajratgichlar qoldiriladi.
-    cleaned = re.sub(r"[^\d.,\s]", "", text).strip()
-    cleaned = re.sub(r"\s+", "", cleaned)  # bo'sh joy — doim minglik
+    cleaned = re.sub(rf"[^\d.,{_SEP_CHARS}]", "", text).strip()
+    cleaned = re.sub(rf"{_SEP}+", "", cleaned)  # bo'sh joy — doim minglik
     if not cleaned or not re.search(r"\d", cleaned):
         return None, currency
 
@@ -366,10 +384,10 @@ def _first_name(destinations: list[Destination], country: bool) -> Optional[str]
 # bo'lishi muhim. U `_CURRENCY_WORDS` orqali taksonomiyaga bog'langan.
 _PRICE_IN_LINE = re.compile(
     # Belgi narxdan oldin: "$850". Faqat belgilar — "usd 850" deb yozilmaydi.
-    r"(?:\$|€|₽)\s*\d[\d\s.,]*|"
+    rf"(?:\$|€|₽){_SEP}*\d[\d.,{_SEP_CHARS}]*|"
     # Valyuta narxdan keyin: "850 $", "890 dollar", "12 000 000 so'm".
     # `(?!\w)` — "500 summa" ichidagi "sum" ni valyuta deb o'qimasin.
-    rf"\d[\d\s.,]*\s*(?:{_CURRENCY_WORDS})(?!\w)",
+    rf"\d[\d.,{_SEP_CHARS}]*{_SEP}*(?:{_CURRENCY_WORDS})(?!\w)",
     re.I,
 )
 
@@ -413,6 +431,24 @@ def parse_text(text: str) -> PricelistResult:
 
         # Mehmonxona nomi — narx va belgilardan tozalangan qism.
         name = line[: price_match.start()]
+
+        # Ustunli satrda (brauzerdan olingan jadval) nom BIRINCHI
+        # katakda. Qolgan kataklar — yulduz, ovqat, kecha — nomga
+        # yopishib "Rixos Downtown Antalya\t\t\t7" bo'lib chiqardi.
+        # Ayni paytda o'sha kataklardan kecha sonini ham olamiz.
+        if "\t" in name:
+            kataklar = [k.strip() for k in name.split("\t") if k.strip()]
+            if kataklar:
+                for katak in kataklar[1:]:
+                    kecha = _nights_in(katak) or (
+                        int(katak) if katak.isdigit() and 1 <= int(katak) <= 60
+                        else None
+                    )
+                    if kecha:
+                        ctx_nights = kecha
+                        break
+                name = kataklar[0]
+
         name = re.sub(r"[—–\-:|•·]+\s*$", "", name).strip()
         name = re.sub(r"\b\d\s*\*|\b(UAI|AI|HB\+?|FB\+?|BB|RO)\b", "", name,
                       flags=re.I).strip(" -—–:|")

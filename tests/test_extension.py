@@ -213,3 +213,73 @@ async def test_juda_uzun_matn_rad_etiladi(client: AsyncClient):
         json={"text": "a" * 200_001},
     )
     assert r.status_code == 422
+
+
+# ── Ko'rib chiqish (dry_run) ─────────────────────────────────────────
+
+
+async def test_korib_chiqish_saqlamaydi(client: AsyncClient):
+    """Agent nima yuborayotganini ko'rmasdan bosmasin.
+
+    Bir bosqichli bo'lganda xato sahifadan olingan o'nlab qator jimgina
+    bazaga tushardi va uni qo'lda tozalash kerak bo'lardi.
+    """
+    h = await _admin_headers()
+    raw = await _make_key(client, h)
+
+    r = await client.post(
+        "/api/extension/pricelist",
+        headers={"X-API-Key": raw},
+        json={"text": PRICE_TEXT, "dry_run": True},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["dry_run"] is True
+    assert body["saved"] == 0
+    assert body["found"] == 2
+    assert len(body["preview"]) == 2
+
+    async with TestSessionLocal() as db:
+        offers = (await db.execute(select(TourOffer))).scalars().all()
+    assert offers == [], "ko'rib chiqishda hech nima saqlanmasligi kerak"
+
+
+async def test_korib_chiqishdan_keyin_yuborish_ishlaydi(client: AsyncClient):
+    h = await _admin_headers()
+    raw = await _make_key(client, h)
+
+    await client.post(
+        "/api/extension/pricelist", headers={"X-API-Key": raw},
+        json={"text": PRICE_TEXT, "dry_run": True},
+    )
+    r = await client.post(
+        "/api/extension/pricelist", headers={"X-API-Key": raw},
+        json={"text": PRICE_TEXT},
+    )
+    assert r.json()["saved"] == 2
+    assert r.json()["dry_run"] is False
+
+
+async def test_korish_qatori_bosh_maydonlarni_yozmaydi(client: AsyncClient):
+    """"None · None" ko'rgan agent tahlil ishlamadi deb o'ylardi."""
+    h = await _admin_headers()
+    raw = await _make_key(client, h)
+
+    body = (await client.post(
+        "/api/extension/pricelist", headers={"X-API-Key": raw},
+        json={"text": PRICE_TEXT, "dry_run": True},
+    )).json()
+
+    for line in body["preview"]:
+        assert line.strip(), "bo'sh qator"
+        assert "None" not in line
+        assert not line.startswith("·")
+        assert not line.endswith("·")
+
+
+async def test_kalitsiz_korib_chiqib_ham_bolmaydi(client: AsyncClient):
+    """`dry_run` saqlamasa ham tahlilchini ochiq qoldirmaydi."""
+    r = await client.post(
+        "/api/extension/pricelist", json={"text": PRICE_TEXT, "dry_run": True}
+    )
+    assert r.status_code == 401

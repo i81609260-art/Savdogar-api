@@ -328,3 +328,57 @@ def test_sozli_valyutali_satr_taklifga_aylanadi():
     assert sunrise.currency == "USD"
     # Sarlavhadagi yo'nalish va kecha bu satrga ham tarqalsin.
     assert sunrise.nights == 7
+
+
+# --------------------------------------------------------------------------
+# Brauzerdan olingan jadval (kengaytma yo'li)
+# --------------------------------------------------------------------------
+#
+# `innerText` jadval kataklarini TAB bilan ajratadi. Ilgari tab
+# "mingliklar ajratgichi" deb qabul qilinardi va qo'shni ustundagi son
+# narxga yopishib ketardi.
+
+KABINET = (
+    "Rixos Downtown Antalya\t5*\tAI\t7\t890 USD\n"
+    "Delphin Imperial\t5*\tUAI\t7\t1120 USD\n"
+    "Lara Family Club\t4*\tAI\t10\t760 USD\n"
+)
+
+
+def test_tab_narxga_yopishmaydi():
+    """Eng qimmat xato: 890 USD o'rniga 7890 USD.
+
+    Agent shu narx bilan mijozga taklif bersa, to'qqiz barobar oshirib
+    aytgan bo'lardi.
+    """
+    natija = parse_text(KABINET)
+    assert [o.price_gross for o in natija.offers] == [890.0, 1120.0, 760.0]
+
+
+def test_ustunli_satrda_nom_faqat_birinchi_katak():
+    natija = parse_text(KABINET)
+    nomlar = [o.hotel_name for o in natija.offers]
+    assert nomlar == [
+        "Rixos Downtown Antalya",
+        "Delphin Imperial",
+        "Lara Family Club",
+    ]
+    assert all("\t" not in nom for nom in nomlar)
+
+
+def test_ustunli_satrdan_kecha_soni_olinadi():
+    """Kecha soni alohida katakda — u narxga qo'shilib ketmasin."""
+    natija = parse_text(KABINET)
+    assert [o.nights for o in natija.offers] == [7, 7, 10]
+
+
+def test_yakka_katakda_ham_tab_ajratadi():
+    """Jadval yo'lida `parse_price` bitta katak oladi, lekin himoya qolsin."""
+    assert parse_price("7\t890 USD") == (890.0, "USD")
+    assert parse_price("10\t760 USD") == (760.0, "USD")
+
+
+def test_bosh_joy_hamon_minglik_ajratgichi():
+    """Tabni chiqarish o'zbekcha yozuvni buzmasligi kerak."""
+    assert parse_price("12 500 000 so'm") == (12_500_000.0, "UZS")
+    assert parse_price("1 200 EUR") == (1_200.0, "EUR")

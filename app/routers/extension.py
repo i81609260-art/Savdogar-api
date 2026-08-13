@@ -185,6 +185,12 @@ class PageIn(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_PAGE_CHARS)
     url: Optional[str] = Field(default=None, max_length=500)
     operator_name: Optional[str] = Field(default=None, max_length=200)
+    # Ko'rib chiqish: tahlil qilinadi, lekin SAQLANMAYDI.
+    #
+    # Agent sahifada nima borligini ko'rmasdan turib "yubor" bosardi va
+    # xato sahifadan olingan o'nlab qator jimgina bazaga tushardi. Uni
+    # keyin qo'lda tozalash kerak bo'lardi.
+    dry_run: bool = False
 
 
 class IngestResult(BaseModel):
@@ -193,6 +199,31 @@ class IngestResult(BaseModel):
     skipped: int
     warnings: list[str]
     operator_id: Optional[int]
+    # Nima topilgani — agent yuborishdan oldin ko'radi.
+    found: int = 0
+    preview: list[str] = Field(default_factory=list)
+    dry_run: bool = False
+
+
+def _preview_line(offer) -> str:
+    """Bitta taklifni odam o'qiydigan bir qatorga aylantiradi.
+
+    Faqat TO'LDIRILGAN maydonlar yoziladi — bo'sh joylar "None, None"
+    bo'lib chiqsa agent tahlil ishlamadi deb o'ylardi.
+    """
+    qismlar = [offer.hotel_name]
+    if offer.star:
+        qismlar[0] = f"{offer.hotel_name} {offer.star}*"
+    if offer.city:
+        qismlar.append(offer.city)
+    if offer.nights:
+        qismlar.append(f"{offer.nights} kecha")
+    if offer.board:
+        qismlar.append(offer.board)
+    narx = offer.price_gross if offer.price_gross is not None else offer.price_net
+    if narx is not None:
+        qismlar.append(f"{narx:,.0f} {offer.currency or ''}".strip())
+    return " · ".join(qismlar)
 
 
 @router.post("/pricelist", summary="Kengaytmadan narx qabul qilish")
@@ -222,6 +253,20 @@ async def ingest_pricelist(
         ).scalars().first()
         operator_id = operator.id if operator else None
 
+    preview = [_preview_line(o) for o in result.offers[:8]]
+
+    if payload.dry_run:
+        return IngestResult(
+            saved=0,
+            total_rows=result.total_rows,
+            skipped=result.skipped,
+            warnings=result.warnings[:10],
+            operator_id=operator_id,
+            found=len(result.offers),
+            preview=preview,
+            dry_run=True,
+        )
+
     saved = await save_offers(
         db,
         company_id=cid,
@@ -236,4 +281,6 @@ async def ingest_pricelist(
         skipped=result.skipped,
         warnings=result.warnings[:10],
         operator_id=operator_id,
+        found=len(result.offers),
+        preview=preview,
     )
