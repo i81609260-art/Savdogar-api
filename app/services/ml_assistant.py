@@ -13,7 +13,9 @@ Tashqi API yoʻq, kalit kerak emas — hammasi shu serverda ishlaydi. Holat
 """
 
 import logging
+import asyncio
 import re
+from collections import OrderedDict
 import time
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
@@ -230,6 +232,22 @@ _RELOAD_SECONDS = 20
 # Faqat shu ishonchdan yuqori sorovlardan oʻrganamiz (xato mustahkamlanmasin).
 _LEARN_CONF = 0.40
 
+# Bitta firma uchun saqlanadigan eng ko'p misol.
+#
+# Chegarasiz qoldirilsa model qurish vaqti misollar bilan birga
+# o'sib boraveradi (6000 misolda ~2.8 s). Ya'ni yordamchi
+# o'rgangani sari SEKINLASHARDI — o'z-o'zini rivojlantirishning
+# ma'nosi shunda yo'qolardi. Eng yangi misollar saqlanadi: iboralar
+# takrorlanadi, eskisi yangisiga qo'shimcha ma'lumot bermaydi.
+#
+# 400 — o'lchangan muvozanat: qurish ~0.7 s (fonda), 1500 da esa ~3 s
+# bo'lardi va u har 20 soniyada takrorlanishi mumkin. Urug' to'plami
+# ustiga 400 ta ibora ~15 ta intent uchun yetarlicha keng.
+_MAX_LEARNED = 400
+
+# Xotirada saqlanadigan firma modellari soni.
+_MAX_STORES = 64
+
 
 class _LearningStore:
     """Oʻz-oʻzini kuchaytiruvchi intent klassifikatori.
@@ -240,24 +258,72 @@ class _LearningStore:
     saqlanadi — model undan uzoqlashib ketmaydi (drift'ga qarshi langar).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, company_id: Optional[int] = None) -> None:
+        self.company_id = company_id
         self.seed_norm = {_norm(t) for t, _ in INTENT_TRAINING}
         self.learned: list[tuple[str, str]] = []      # (norm_text, intent)
         self.learned_norm: set[str] = set()
         self.vec: Optional[TfidfVectorizer] = None
         self.clf: Optional[LogisticRegression] = None
         self.last_reload = 0.0
-        self._build()
+        self._rebuilding = False
+        self._dirty = False
+        # Urug' modeli hamma firmaga bir xil — bir marta quriladi va
+        # nusxalanadi. Har firma uchun qaytadan qurilsa, birinchi savol
+        # ~120 ms kutardi.
+        self.vec, self.clf = _seed_model()
 
-    def _build(self) -> None:
-        data = [(_norm(t), l) for t, l in INTENT_TRAINING] + self.learned
+    @staticmethod
+    def _fit(learned: list[tuple[str, str]]):
+        """Modelni quradi. Toza funksiya — alohida ipda chaqirsa bo'ladi.
+
+        Bu yerda `self` ga YOZILMAYDI: qurish davom etayotganda eski model
+        so'rovlarga javob berib turadi va yarim tayyor holat ko'rinmaydi.
+        """
+        data = [(_norm(t), l) for t, l in INTENT_TRAINING] + learned
         texts = [t for t, _ in data]
         labels = [l for _, l in data]
         vec = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 4), min_df=1)
         X = vec.fit_transform(texts)
         clf = LogisticRegression(max_iter=1000)
         clf.fit(X, labels)
-        self.vec, self.clf = vec, clf
+        return vec, clf
+
+    def _build(self) -> None:
+        """Sinxron qurish — faqat birinchi (urug' ustidagi) model uchun."""
+        self.vec, self.clf = self._fit(self.learned)
+
+    def _schedule_rebuild(self) -> None:
+        """Qurishni FON ga qo'yadi.
+
+        Ilgari qurish foydalanuvchi so'rovi ichida bajarilardi va u
+        sinxron CPU ishi bo'lgani uchun butun event loop'ni to'xtatardi —
+        ya'ni o'sha paytdagi BOSHQA so'rovlar ham kutardi.
+        """
+        if self._rebuilding:
+            self._dirty = True     # qurish tugagach yana bir marta
+            return
+        self._rebuilding = True
+        try:
+            asyncio.get_running_loop().create_task(self._rebuild())
+        except RuntimeError:
+            # Loop yo'q (sinov yoki skript) — sinxron quraveramiz.
+            self._rebuilding = False
+            self._build()
+
+    async def _rebuild(self) -> None:
+        try:
+            while True:
+                self._dirty = False
+                nusxa = list(self.learned)
+                vec, clf = await asyncio.to_thread(self._fit, nusxa)
+                self.vec, self.clf = vec, clf
+                if not self._dirty:
+                    break
+        except Exception as exc:  # noqa: BLE001 — eski model ishlab tursin
+            logger.warning("Tella modelini qurib bo'lmadi: %s", exc)
+        finally:
+            self._rebuilding = False
 
     def predict(self, text: str) -> tuple[str, float]:
         t = _norm(text)
@@ -293,15 +359,36 @@ class _LearningStore:
         return intent, conf
 
     async def ensure_fresh(self, db: AsyncSession) -> None:
-        """Vaqti-vaqti bilan DB dan yangi misollarni yuklab, modelni yangilaydi."""
+        """DB dan SHU FIRMANING misollarini yuklaydi.
+
+        Firma bo'yicha chegaralangan: bir agentlikning iborasi
+        boshqasining modeliga aralashmasligi kerak. Yon foydasi tezlik —
+        har firmaning to'plami kichik bo'ladi, ya'ni qurish ham qisqa.
+
+        Model qurish FONDA ketadi: bu yerda hech kim kutmaydi.
+        """
         now = time.monotonic()
-        if self.clf is not None and (now - self.last_reload) < _RELOAD_SECONDS:
+        if (now - self.last_reload) < _RELOAD_SECONDS:
             return
         self.last_reload = now
-        total = (await db.execute(select(func.count(AssistantExample.id)))).scalar() or 0
-        if self.clf is not None and total == len(self.learned):
+
+        shart = AssistantExample.company_id == self.company_id
+        total = (
+            await db.execute(select(func.count(AssistantExample.id)).where(shart))
+        ).scalar() or 0
+        if total == len(self.learned):
             return  # oʻzgarish yoʻq
-        rows = (await db.execute(select(AssistantExample.text, AssistantExample.intent))).all()
+
+        rows = (
+            await db.execute(
+                select(AssistantExample.text, AssistantExample.intent)
+                .where(shart)
+                # Eng yangilari. Chegara bo'lmasa jadval o'sgani sari bu
+                # so'rov ham, qurish ham sekinlashaverardi.
+                .order_by(AssistantExample.id.desc())
+                .limit(_MAX_LEARNED)
+            )
+        ).all()
         seen: set[str] = set()
         learned: list[tuple[str, str]] = []
         for text, intent in rows:
@@ -312,7 +399,7 @@ class _LearningStore:
             learned.append((nt, intent))
         self.learned = learned
         self.learned_norm = seen
-        self._build()
+        self._schedule_rebuild()
 
     async def learn(self, db: AsyncSession, company_id: Optional[int], text: str, intent: str) -> None:
         """Yangi (matn -> intent) misolini saqlaydi va modelni qayta quradi.
@@ -328,17 +415,46 @@ class _LearningStore:
         await db.commit()
         self.learned.append((nt, intent))
         self.learned_norm.add(nt)
-        self._build()
+        if len(self.learned) > _MAX_LEARNED:
+            tashlanadi = self.learned.pop(0)
+            self.learned_norm.discard(tashlanadi[0])
+        # Javob DARHOL ketadi; model fonda yangilanadi. Aks holda
+        # foydalanuvchi o'z iborasini o'rgatgani uchun JAZOLANARDI:
+        # o'rganish qanchalik ko'p bo'lsa, javob shuncha kech kelardi.
+        self._schedule_rebuild()
 
 
-_STORE: Optional[_LearningStore] = None
+# Urug' modeli — hamma firma uchun bir xil boshlang'ich nuqta.
+_SEED: Optional[tuple] = None
 
 
-def _store() -> _LearningStore:
-    global _STORE
-    if _STORE is None:
-        _STORE = _LearningStore()
-    return _STORE
+def _seed_model() -> tuple:
+    global _SEED
+    if _SEED is None:
+        _SEED = _LearningStore._fit([])
+    return _SEED
+
+
+# Firma -> model. `OrderedDict` LRU sifatida: xotirada hamma firmani
+# saqlab bo'lmaydi, kamdan-kam ishlatilgani chiqarib yuboriladi.
+_STORES: "OrderedDict[Optional[int], _LearningStore]" = OrderedDict()
+
+
+def _store(company_id: Optional[int] = None) -> _LearningStore:
+    """Shu firmaning modeli.
+
+    Ilgari model bitta va UMUMIY edi: bir agentlikning iborasi
+    boshqasining modelini o'zgartirardi.
+    """
+    store = _STORES.get(company_id)
+    if store is None:
+        store = _LearningStore(company_id)
+        _STORES[company_id] = store
+        while len(_STORES) > _MAX_STORES:
+            _STORES.popitem(last=False)
+    else:
+        _STORES.move_to_end(company_id)
+    return store
 
 
 def is_configured() -> bool:
@@ -1026,7 +1142,7 @@ async def _start_tour_search(db: AsyncSession, cid: int, message: str) -> dict:
 
 
 async def _handle_no_pending(db: AsyncSession, cid: int, message: str) -> dict:
-    intent, conf = _store().predict(message)
+    intent, conf = _store(cid).predict(message)
 
     if intent == "greeting":
         return _reply("Salom! Men Tella AI, firmangiz yordamchisiman. Masalan: 'nechta tur bor' yoki 'yangi tur qosh'.")
@@ -1040,20 +1156,20 @@ async def _handle_no_pending(db: AsyncSession, cid: int, message: str) -> dict:
     if intent == "report":
         reply = await _run_report(db, cid)
         if conf >= _LEARN_CONF:
-            await _store().learn(db, cid, message, intent)
+            await _store(cid).learn(db, cid, message, intent)
         return _reply(reply)
     if intent in ("count_tours", "list_tours", "count_customers", "list_customers",
                   "recent_bookings", "get_plan", "instagram_leads"):
         reply = await _run_read_intent(db, cid, intent)
         if conf >= _LEARN_CONF:
-            await _store().learn(db, cid, message, intent)
+            await _store(cid).learn(db, cid, message, intent)
         return _reply(reply)
 
     # Operatorlardan qidirish — shartlarni matndan ajratib, tasdiqqa qo'yamiz.
     # Qidiruvning o'zi konnektor qatlamida, fon jarayonida ketadi.
     if intent == SEARCH_INTENT:
         if conf >= _LEARN_CONF:
-            await _store().learn(db, cid, message, intent)
+            await _store(cid).learn(db, cid, message, intent)
         return await _start_tour_search(db, cid, message)
 
     # Yozuvchi intentlar — asl buyruqni saqlaymiz, tasdiqlangach oʻrganamiz.
@@ -1323,7 +1439,9 @@ async def _execute(db: AsyncSession, user: User, intent: str, slots: dict) -> di
         return _reply(_friendly_error(exc))
     # Amal muvaffaqiyatli bajarildi — asl buyruqni oʻrganamiz (tasdiqlangan misol).
     if res.get("actions"):
-        await _store().learn(db, user.company_id, str(slots.get("_trigger", "")), intent)
+        await _store(user.company_id).learn(
+            db, user.company_id, str(slots.get("_trigger", "")), intent
+        )
     return res
 
 
@@ -1530,7 +1648,7 @@ async def run_assistant(
         return _reply("Savol yoki buyruq yozing.")
 
     # Oʻrgangan misollarni yangilab olamiz (boshqa worker qoshgan boʻlishi mumkin).
-    await _store().ensure_fresh(db)
+    await _store(cid).ensure_fresh(db)
 
     if pending and pending.get("intent"):
         return await _handle_pending(db, user, message, pending)
